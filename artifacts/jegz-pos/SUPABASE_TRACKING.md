@@ -2,10 +2,13 @@
 
 This app now supports **customer-safe, realtime cross-device tracking** via Supabase. Local IndexedDB remains the source of truth; status changes are mirrored to Supabase with an unguessable token and shown on `/track/:token`.
 
-## 1) Create the Supabase table
+> The POS now also syncs all shop data to Supabase. See [`SUPABASE_FULL_SYNC.md`](./SUPABASE_FULL_SYNC.md) for the full database setup, migration, and conflict handling.
+
+## 1) Create the Supabase tables
 1. Open your Supabase project → **SQL Editor**.
 2. Run [`supabase/tracking.sql`](./supabase/tracking.sql).
-3. Create a dedicated auth user: **Authentication → Users → Add user** (enable **Auto Confirm User**). This account is used by the POS to upsert tracking rows.
+3. Run [`supabase/full_sync.sql`](./supabase/full_sync.sql) too if you want jobs, inventory, customers, and settings shared across devices.
+4. Create a dedicated auth user: **Authentication → Users → Add user** (enable **Auto Confirm User**). This account is used by the POS to sync rows.
 
 ## 2) Configure environment variables
 Create/update `.env` in `artifacts/jegz-pos/` (or your host's env):
@@ -15,6 +18,7 @@ VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 VITE_SUPABASE_SHOP_EMAIL=tracking-shop@yourdomain.com
 VITE_SUPABASE_SHOP_PASSWORD=strong-password
+VITE_SUPABASE_SHOP_ID=fixmo-ph
 # Optional: set when deployed behind a custom domain/subpath
 # VITE_PUBLIC_URL=https://your-domain.com
 ```

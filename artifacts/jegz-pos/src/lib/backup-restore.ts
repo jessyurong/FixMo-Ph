@@ -23,6 +23,7 @@
 import { localDb, LOCAL_TABLES } from './local-db';
 import { normalizeStatus, paymentStatusFor, ensureJobNumbers, normalizeServiceCatalog } from './offline-data-services';
 import { writeFileToStorageFolder } from './storage-folder';
+import { queueAllLocalRecords, queueDeletedRows } from './sync-engine';
 
 export const BACKUP_VERSION = '2.1.0';
 
@@ -718,8 +719,46 @@ export async function importBackup(
 
     // Replace mode clears local data first (only after the safety backup exists).
     if (!mergeMode) {
+      // Preserve sync bookkeeping so a restore does not accidentally re-pull
+      // the cloud rows that this restore is replacing.
+      const preservedMeta = await localDb.meta
+        .filter((row) => String(row.key || '').startsWith('sync.'))
+        .toArray();
+
+      const backupSyncIds = new Map<string, Set<string>>();
+      for (const table of IMPORT_ORDER) {
+        const ids = new Set<string>();
+        const rows = backup.data[table];
+        if (Array.isArray(rows)) {
+          for (const row of rows) {
+            if (row && typeof row.syncId === 'string' && row.syncId) ids.add(row.syncId);
+          }
+        }
+        backupSyncIds.set(table, ids);
+      }
+
+      // Tombstone only rows that are being replaced; rows present in the
+      // backup keep their sync IDs and are re-uploaded below.
+      for (const table of LOCAL_TABLES) {
+        if (table === 'meta') continue;
+        const dbTable = (localDb as any)[table];
+        if (!dbTable) continue;
+        const keep = backupSyncIds.get(table) || new Set<string>();
+        const existing = await dbTable.toArray();
+        const removed = existing.filter(
+          (row: Record<string, unknown>) =>
+            typeof row.syncId === 'string' && row.syncId && !keep.has(row.syncId),
+        );
+        if (removed.length > 0) {
+          await queueDeletedRows(table as any, removed, { flush: false });
+        }
+      }
+
       for (const table of LOCAL_TABLES) {
         await (localDb as any)[table].clear();
+      }
+      for (const row of preservedMeta) {
+        await localDb.meta.put(row);
       }
     }
 
@@ -736,9 +775,13 @@ export async function importBackup(
 
       // Migrate legacy rows into the current schema. Each row is copied first
       // so the caller's backup object is never mutated, then migrated in place.
+      const restoreStamp = new Date().toISOString();
       const migrated = data.map(row => {
         const copy = { ...row };
         migrateRow(table, copy);
+        // A replace restore is an explicit overwrite: make each imported row
+        // win last-write-wins against whatever is currently in the cloud.
+        if (!mergeMode) copy.updatedAt = restoreStamp;
         return copy;
       });
 
@@ -783,6 +826,10 @@ export async function importBackup(
       key: 'db_seeded_v1',
       value: true,
     } as any);
+
+    // Imported rows are new local changes; push them and let last-write-wins
+    // reconcile anything that was also edited on another device.
+    await queueAllLocalRecords();
 
     result.success = true;
     result.message = mergeMode

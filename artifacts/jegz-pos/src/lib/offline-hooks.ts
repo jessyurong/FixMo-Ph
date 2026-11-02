@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseQueryResult, UseMutationResult } from '@tanstack/react-query';
 import bcrypt from 'bcryptjs';
 import { localDb } from './local-db';
+import { queueSyncRecord } from './sync-engine';
 import {
   activityService,
   productService,
@@ -831,6 +832,7 @@ export function useChangePassword(): UseMutationResult<any, unknown, { data: { c
       }
       const newHash = await bcrypt.hash(data.newPassword, 10);
       await localDb.users.update(dbUser.id as number, { passwordHash: newHash });
+      await queueSyncRecord('users', dbUser.id as number);
       return { success: true };
     },
   });

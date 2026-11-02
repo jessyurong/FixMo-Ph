@@ -4,6 +4,7 @@ import { localDb } from "./local-db";
 import { activityService } from "./offline-data-services";
 import { seedDatabaseIfNeeded } from "./seed-data";
 import { startTrackingSync } from "./tracking-mirror";
+import { prepareLocalFromCloud, queueSyncRecord, startFullSync } from "./sync-engine";
 
 export type UserRole = "admin" | "staff";
 
@@ -39,7 +40,7 @@ async function seedAdminIfNeeded() {
   const count = await localDb.users.count();
   if (count === 0) {
     const passwordHash = await bcrypt.hash("jegz2024", 10);
-    await localDb.users.add({
+    const id = await localDb.users.add({
       username: "admin",
       passwordHash,
       role: "admin",
@@ -47,6 +48,7 @@ async function seedAdminIfNeeded() {
       isActive: true,
       createdAt: new Date().toISOString(),
     });
+    await queueSyncRecord("users", id);
   }
 }
 
@@ -56,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
+      // Pull an existing cloud database into a fresh device before demo seed.
+      await prepareLocalFromCloud();
       // Seed admin user if needed
       await seedAdminIfNeeded();
       // Seed demo data if needed
@@ -69,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (dbUser && dbUser.isActive) {
           setUser(parsed);
           startTrackingSync();
+          startFullSync();
         } else {
           localStorage.removeItem(SESSION_KEY);
           setUser(null);
@@ -106,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
       setUser(currentUser);
       startTrackingSync();
+      startFullSync();
       void activityService.log("login", `${currentUser.username} signed in`, {
         entityType: "user", entityId: currentUser.id,
       });

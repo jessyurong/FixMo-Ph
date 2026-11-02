@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Banknote,
   Check,
+  Cloud,
   FolderOpen,
   FolderTree,
   ImagePlus,
@@ -42,6 +43,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { getSyncStatus, syncNow } from "@/lib/sync-engine";
 import { cn } from "@/lib/utils";
 
 const EMPTY_SETTINGS: SettingsInput = {
@@ -467,7 +469,106 @@ export default function SettingsPage() {
       </Card>
 
       <StorageFolderSection />
+      <CloudSyncSection />
     </div>
+  );
+}
+
+function CloudSyncSection() {
+  const { toast } = useToast();
+  const [status, setStatus] = useState<Awaited<ReturnType<typeof getSyncStatus>> | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const refresh = async () => {
+    try {
+      setStatus(await getSyncStatus());
+    } catch {
+      // Status is best-effort; leave the last known value on screen.
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 5_000);
+    window.addEventListener("online", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
+  const runSync = async () => {
+    setSyncing(true);
+    try {
+      await syncNow();
+      toast({ title: "Sync complete", description: "Local changes were pushed and cloud changes pulled." });
+    } catch (error) {
+      toast({ title: errorMessage(error, "Sync failed"), variant: "destructive" });
+    } finally {
+      setSyncing(false);
+      await refresh();
+    }
+  };
+
+  const lastSynced = status?.lastSyncedAt
+    ? new Date(status.lastSyncedAt).toLocaleString()
+    : "Not synced yet";
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Cloud className="h-4 w-4 text-primary" />
+          Cloud sync
+        </CardTitle>
+        <CardDescription>
+          Every change is saved locally first, then synced to Supabase. Offline edits upload automatically when the connection returns.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 p-5">
+        {!status?.configured ? (
+          <Alert>
+            <Cloud className="h-4 w-4" />
+            <AlertTitle>Supabase is not configured</AlertTitle>
+            <AlertDescription>
+              Set the Supabase environment variables and redeploy to enable multi-device sync. The POS still works offline on this device.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Connection</p>
+                <p className={cn("mt-1 font-semibold", status.online ? "text-emerald-600" : "text-amber-600")}>
+                  {status.online ? "Online" : "Offline"}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Pending changes</p>
+                <p className="mt-1 font-semibold">{status.pending}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Last sync</p>
+                <p className="mt-1 truncate font-semibold" title={lastSynced}>{lastSynced}</p>
+              </div>
+            </div>
+            {status.lastError ? (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Last sync warning</AlertTitle>
+                <AlertDescription className="break-words">{status.lastError}</AlertDescription>
+              </Alert>
+            ) : null}
+            <Button onClick={runSync} disabled={syncing || !status.online} className="gap-2">
+              <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+              {syncing ? "Syncing..." : "Sync now"}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { useAuth, ALL_PERMISSIONS, type Permission } from "@/lib/auth-context";
 import { localDb } from "@/lib/local-db";
 import { activityService } from "@/lib/offline-api";
+import { deleteLocalAndQueue, queueSyncRecord } from "@/lib/sync-engine";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,7 +113,7 @@ export default function UsersPage() {
           return;
         }
         const passwordHash = await bcrypt.hash(form.password, 10);
-        await localDb.users.add({
+        const id = await localDb.users.add({
           username: form.username,
           passwordHash,
           role: form.role,
@@ -120,6 +121,7 @@ export default function UsersPage() {
           isActive: form.isActive,
           createdAt: new Date().toISOString(),
         } as any);
+        await queueSyncRecord("users", id);
         toast({ title: "User created" });
         void activityService.log("user.create", `Created user "${form.username}" (${form.role})`, {
           entityType: "user", entityId: form.username,
@@ -134,6 +136,7 @@ export default function UsersPage() {
           updateFields.passwordHash = await bcrypt.hash(form.password, 10);
         }
         await localDb.users.update(editingUser.id, updateFields);
+        await queueSyncRecord("users", editingUser.id);
         toast({ title: "User updated" });
         void activityService.log("user.update", `Updated user "${editingUser.username}"`, {
           entityType: "user", entityId: editingUser.id,
@@ -151,7 +154,7 @@ export default function UsersPage() {
     if (u.id === me?.id) { toast({ title: "Cannot delete your own account", variant: "destructive" }); return; }
     if (!confirm(`Delete user "${u.username}"? This cannot be undone.`)) return;
     try {
-      await localDb.users.delete(u.id);
+      await deleteLocalAndQueue("users", u.id);
       toast({ title: "User deleted" });
       void activityService.log("user.delete", `Deleted user "${u.username}"`, {
         entityType: "user", entityId: u.id,
@@ -167,6 +170,7 @@ export default function UsersPage() {
     if (u.id === me?.id) { toast({ title: "Cannot deactivate your own account", variant: "destructive" }); return; }
     try {
       await localDb.users.update(u.id, { isActive: !u.isActive });
+      await queueSyncRecord("users", u.id);
       toast({ title: u.isActive ? "User deactivated" : "User activated" });
       void activityService.log("user.status", `${u.isActive ? "Deactivated" : "Activated"} user "${u.username}"`, {
         entityType: "user", entityId: u.id,

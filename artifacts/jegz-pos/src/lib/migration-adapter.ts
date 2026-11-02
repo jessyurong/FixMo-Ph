@@ -10,6 +10,7 @@
 import { localDb } from './local-db';
 import { exportBackup } from './backup-restore';
 import { normalizeStatus, ensureJobNumbers } from './offline-data-services';
+import { queueAllLocalRecords } from './sync-engine';
 import type { RestoreResult } from './backup-restore';
 
 // ─── Legacy format types ────────────────────────────────────────────────────
@@ -880,6 +881,12 @@ export async function migrateLegacyBackup(legacy: LegacyBackup): Promise<Restore
     // Fingerprint write failing is not destructive; data is already imported.
     // Report it as a warning but keep the import as successful.
     console.warn('Could not record import fingerprint:', error);
+  }
+
+  try {
+    await queueAllLocalRecords();
+  } catch (error) {
+    console.warn('Could not queue migrated data for sync:', error);
   }
 
   result.success = true;

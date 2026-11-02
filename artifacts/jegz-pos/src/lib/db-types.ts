@@ -2,6 +2,7 @@
  * Offline-First Database Entity Types
  * Shared schema types for the IndexedDB tables (Dexie EntityTable).
  * `id` is required so Dexie's auto-increment key resolves to `number`.
+ * Sync metadata added for cloud sync (local-first).
  */
 
 // ─── Job statuses ────────────────────────────────────────────────────────────
@@ -77,9 +78,52 @@ export interface TrackingOutboxEntry {
   updatedAt: string;
 }
 
+// ─── Full local-first sync ───────────────────────────────────────────────────
+/** Local Dexie tables that participate in full cloud sync. */
+export const SYNC_TABLE_NAMES = [
+  'products',
+  'services',
+  'technicians',
+  'transactions',
+  'transactionItems',
+  'cashDrawerEntries',
+  'gcashDrawerEntries',
+  'defectiveItems',
+  'backjobs',
+  'users',
+  'settings',
+  'activityLogs',
+] as const;
+
+export type SyncTableName = typeof SYNC_TABLE_NAMES[number];
+
+export type SyncOperation = 'upsert' | 'delete';
+
+/**
+ * One pending cloud mutation. Keyed by `${table}:${syncId}` so repeated edits
+ * to the same record replace the previous payload instead of piling up.
+ */
+export interface SyncOutboxEntry {
+  /** Composite key: `${table}:${syncId}`. */
+  key: string;
+  table: SyncTableName;
+  syncId: string;
+  operation: SyncOperation;
+  /** Cloud-safe row payload (no local numeric ids). */
+  payload: Record<string, unknown>;
+  attempts: number;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Entities ───────────────────────────────────────────────────────────────
 export interface Product {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   name: string;
   category: string;
   price: number;
@@ -98,6 +142,10 @@ export interface Product {
 
 export interface Service {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   name: string;
   /** Legacy field (e.g. repair/maintenance/custom/android). Kept for compatibility. */
   type: string;
@@ -117,6 +165,10 @@ export interface Service {
 
 export interface Technician {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   name: string;
   email?: string;
   phone?: string;
@@ -131,6 +183,14 @@ export interface Technician {
 
 export interface TransactionItem {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** syncId of the parent transaction (cloud reference). */
+  transactionSyncId?: string;
+  /** syncId of the catalog product/service referenced by this line. */
+  refSyncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   transactionId: number;
   type: 'product' | 'service';
   refId: number;
@@ -177,6 +237,10 @@ export type NewTransactionItem = {
 
 export interface Transaction {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   /** Searchable customer / phone / device details. */
   customerName?: string;
   customerPhone?: string;
@@ -188,6 +252,7 @@ export interface Transaction {
   customer?: string;
   unit?: string;
   technicianId?: number;
+  technicianSyncId?: string;
   technicianName?: string;
   paymentMethod?: 'cash' | 'gcash';
   status: TransactionStatus;
@@ -218,6 +283,12 @@ export interface Transaction {
 
 export interface DefectiveItem {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** syncId of the related product (cloud reference). */
+  productSyncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   productId: number;
   productName?: string;
   reason: string;
@@ -240,10 +311,15 @@ export type NewDefectiveItem = {
 
 export interface Backjob {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   customer: string;
   phone?: string;
   unit?: string;
   technicianId?: number;
+  technicianSyncId?: string;
   technicianName?: string;
   description?: string;
   issue?: string;
@@ -258,6 +334,10 @@ export interface Backjob {
 
 export interface CashDrawerEntry {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   type:
     | 'opening'
     | 'closing'
@@ -275,6 +355,10 @@ export interface CashDrawerEntry {
 
 export interface GcashDrawerEntry {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   type:
     | 'opening'
     | 'closing'
@@ -292,6 +376,10 @@ export interface GcashDrawerEntry {
 
 export interface Settings {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   key: string;
   value: any;
   createdAt?: string;
@@ -301,6 +389,10 @@ export interface Settings {
 
 export interface AppUser {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
   username: string;
   passwordHash: string;
   role: 'admin' | 'staff';
@@ -329,10 +421,17 @@ export type ActivityAction =
 
 export interface ActivityLog {
   id: number;
+  /** Stable cloud sync identifier (UUID). */
+  syncId?: string;
+  /** Soft-delete marker used by the sync engine. */
+  deletedAt?: string;
+  /** Timestamp of the last local edit (activity logs are append-only). */
+  updatedAt?: string;
   createdAt: string;
   username: string;
   userRole?: string;
   userId?: number;
+  userSyncId?: string;
   action: ActivityAction | string;
   entityType?: string;
   entityId?: string;

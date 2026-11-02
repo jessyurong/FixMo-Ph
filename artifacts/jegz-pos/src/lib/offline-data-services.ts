@@ -45,6 +45,13 @@ import type {
 } from './db-types';
 import { generateTrackingToken } from './tracking-token';
 import { queueTransactionTracking } from './tracking-mirror';
+import {
+  deleteLocalAndQueue,
+  flushSyncOutbox,
+  queueDeletedRows,
+  queueSyncDelete,
+  queueSyncRecord,
+} from './sync-engine';
 
 export type {
   ActivityLog,
@@ -84,6 +91,32 @@ export const round2 = (n: number) => Math.round(n * 100) / 100;
 export const DEFAULT_REORDER_POINT = 3;
 
 const nowISO = () => new Date().toISOString();
+
+/** Queue product rows whose stock/reservation changed inside a job write. */
+async function queueProductsForItems(
+  items: Array<{ type?: string; refId?: number }>,
+): Promise<void> {
+  const ids = [...new Set(
+    items
+      .filter((item) => item.type === 'product' && Number(item.refId) > 0)
+      .map((item) => Number(item.refId)),
+  )];
+  for (const id of ids) {
+    await queueSyncRecord('products', id, { flush: false });
+  }
+  if (ids.length > 0) void flushSyncOutbox(true);
+}
+
+/** Queue drawer rows created by a job operation (deposits and final sale). */
+async function queueRecentDrawerEntries(since: string): Promise<void> {
+  const [cash, gcash] = await Promise.all([
+    localDb.cashDrawerEntries.filter((row) => String(row.createdAt || '') >= since).toArray(),
+    localDb.gcashDrawerEntries.filter((row) => String(row.createdAt || '') >= since).toArray(),
+  ]);
+  for (const row of cash) await queueSyncRecord('cashDrawerEntries', row, { flush: false });
+  for (const row of gcash) await queueSyncRecord('gcashDrawerEntries', row, { flush: false });
+  if (cash.length + gcash.length > 0) void flushSyncOutbox(true);
+}
 
 export function isCompletedStatus(status: unknown): boolean {
   return status === 'completed' || status === 'complete' || status === 'done';
@@ -239,7 +272,9 @@ export async function ensureJobNumbers(): Promise<void> {
   for (const tx of missing) {
     const jobNumber = await generateJobNumber();
     await localDb.transactions.update(tx.id, { jobNumber });
+    await queueSyncRecord('transactions', tx.id, { flush: false });
   }
+  if (missing.length > 0) void flushSyncOutbox();
 }
 
 const LOW_STOCK_DEFAULTS_FLAG = 'low_stock_defaults_v1';
@@ -256,10 +291,12 @@ export async function normalizeLowStockDefaults(): Promise<void> {
   for (const p of products) {
     if (typeof p.reorderPoint !== 'number' || !Number.isFinite(p.reorderPoint) || p.reorderPoint < 0) {
       await localDb.products.update(p.id, { reorderPoint: DEFAULT_REORDER_POINT, updatedAt: nowISO() });
+      await queueSyncRecord('products', p.id, { flush: false });
     }
   }
 
   await localDb.meta.put({ key: LOW_STOCK_DEFAULTS_FLAG, value: true, updatedAt: nowISO() } as any);
+  void flushSyncOutbox();
 }
 
 // ─── Product Services ───────────────────────────────────────────────────────
@@ -318,20 +355,23 @@ export const productService = {
 
   async create(product: Omit<Product, 'id'>): Promise<number> {
     const now = nowISO();
-    return localDb.products.add({
+    const id = await localDb.products.add({
       ...product,
       reservedStock: (product as any).reservedStock ?? 0,
       createdAt: now,
       updatedAt: now,
     });
+    await queueSyncRecord('products', id);
+    return id;
   },
 
   async update(id: number, product: Partial<Product>): Promise<void> {
     await localDb.products.update(id, { ...product, updatedAt: nowISO() });
+    await queueSyncRecord('products', id);
   },
 
   async delete(id: number): Promise<void> {
-    await localDb.products.delete(id);
+    await deleteLocalAndQueue('products', id);
   },
 
   async getLowStock(reorderPoint?: number): Promise<Product[]> {
@@ -356,15 +396,18 @@ export const serviceService = {
 
   async create(service: Omit<Service, 'id'>): Promise<number> {
     const now = nowISO();
-    return localDb.services.add({ ...service, createdAt: now, updatedAt: now });
+    const id = await localDb.services.add({ ...service, createdAt: now, updatedAt: now });
+    await queueSyncRecord('services', id);
+    return id;
   },
 
   async update(id: number, service: Partial<Service>): Promise<void> {
     await localDb.services.update(id, { ...service, updatedAt: nowISO() });
+    await queueSyncRecord('services', id);
   },
 
   async delete(id: number): Promise<void> {
-    await localDb.services.delete(id);
+    await deleteLocalAndQueue('services', id);
   },
 
   /** Count historical transaction lines that reference this service. */
@@ -418,8 +461,10 @@ export async function normalizeServiceCatalog(): Promise<void> {
     const price = typeof service.price === 'number' && Number.isFinite(service.price) ? service.price : 0;
     if (service.category !== category || service.active === undefined || service.cost !== cost || service.price !== price) {
       await localDb.services.update(service.id, { category, active, cost, price, updatedAt: now });
+      await queueSyncRecord('services', service.id, { flush: false });
     }
   }
+  void flushSyncOutbox();
 }
 
 // ─── Technician Services ────────────────────────────────────────────────────
@@ -447,15 +492,18 @@ export const technicianService = {
 
   async create(technician: Omit<Technician, 'id'>): Promise<number> {
     const now = nowISO();
-    return localDb.technicians.add({ ...technician, createdAt: now, updatedAt: now });
+    const id = await localDb.technicians.add({ ...technician, createdAt: now, updatedAt: now });
+    await queueSyncRecord('technicians', id);
+    return id;
   },
 
   async update(id: number, technician: Partial<Technician>): Promise<void> {
     await localDb.technicians.update(id, { ...technician, updatedAt: nowISO() });
+    await queueSyncRecord('technicians', id);
   },
 
   async delete(id: number): Promise<void> {
-    await localDb.technicians.delete(id);
+    await deleteLocalAndQueue('technicians', id);
   },
 };
 
@@ -629,6 +677,7 @@ export const transactionService = {
         }
       }
     }
+    await queueProductsForItems(items);
     await queueTransactionTracking(txId);
     return txId;
   },
@@ -639,7 +688,9 @@ export const transactionService = {
   },
 
   async delete(id: number): Promise<void> {
-    await localDb.transactions.delete(id);
+    const items = await localDb.transactionItems.where('transactionId').equals(id).toArray();
+    if (items.length > 0) await queueDeletedRows('transactionItems', items);
+    await deleteLocalAndQueue('transactions', id);
   },
 
   async getByDateRange(startDate: Date, endDate: Date): Promise<EnrichedTransaction[]> {
@@ -1123,6 +1174,7 @@ export const customerService = {
 export const jobService = {
   /** Save the current POS job as a pending transaction (status pending). */
   async saveAsPending(input: JobInput): Promise<{ id: number; jobNumber: string; trackingToken: string }> {
+    const drawerSyncSince = new Date(Date.now() - 1_000).toISOString();
     const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const jobNumber = await generateJobNumber();
       const now = nowISO();
@@ -1148,7 +1200,9 @@ export const jobService = {
       }
       return { id, jobNumber, trackingToken };
     });
+    await queueProductsForItems(input.items);
     await queueTransactionTracking(result.id);
+    void queueRecentDrawerEntries(drawerSyncSince);
     return result;
   },
 
@@ -1158,12 +1212,15 @@ export const jobService = {
     input: JobInput,
     opts?: { additionalDeposit?: number; additionalDepositMethod?: 'cash' | 'gcash'; status?: TransactionStatus },
   ): Promise<{ id: number; jobNumber: string; trackingToken: string }> {
+    const drawerSyncSince = new Date(Date.now() - 1_000).toISOString();
+    let removedItems: TransactionItem[] = [];
     const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const existing = await localDb.transactions.get(id);
       if (!existing) throw new Error('Job not found');
       if (!isOpenStatus(existing.status)) throw new Error('Only open jobs can be edited');
 
       const oldItems = await localDb.transactionItems.where('transactionId').equals(id).toArray();
+      removedItems = oldItems;
       const jobNumber = existing.jobNumber || (await generateJobNumber());
       const trackingToken = existing.trackingToken || generateTrackingToken();
       const now = nowISO();
@@ -1202,7 +1259,10 @@ export const jobService = {
 
       return { id, jobNumber, trackingToken };
     });
+    if (removedItems.length > 0) await queueDeletedRows('transactionItems', removedItems);
+    await queueProductsForItems([...removedItems, ...input.items]);
     await queueTransactionTracking(result.id);
+    void queueRecentDrawerEntries(drawerSyncSince);
     return result;
   },
 
@@ -1211,6 +1271,7 @@ export const jobService = {
     id: number,
     opts: { paymentMethod: 'cash' | 'gcash'; cashReceived?: number },
   ): Promise<JobCompletionResult> {
+    const drawerSyncSince = new Date(Date.now() - 1_000).toISOString();
     const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const tx = await localDb.transactions.get(id);
       if (!tx) throw new Error('Job not found');
@@ -1281,12 +1342,15 @@ export const jobService = {
         trackingToken,
       };
     });
+    await queueProductsForItems(result.items);
     await queueTransactionTracking(result.id);
+    void queueRecentDrawerEntries(drawerSyncSince);
     return result;
   },
 
   /** Complete a brand new sale from the POS without a pending step. */
   async completeNewJob(input: JobInput, opts?: { cashReceived?: number }): Promise<JobCompletionResult> {
+    const drawerSyncSince = new Date(Date.now() - 1_000).toISOString();
     const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const jobNumber = await generateJobNumber();
       const now = nowISO();
@@ -1344,12 +1408,15 @@ export const jobService = {
         trackingToken,
       };
     });
+    await queueProductsForItems(result.items);
     await queueTransactionTracking(result.id);
+    void queueRecentDrawerEntries(drawerSyncSince);
     return result;
   },
 
   /** Record a deposit against an open job. Does NOT mark paid unless paid >= total. */
   async recordDeposit(id: number, opts: { amount: number; method: 'cash' | 'gcash'; note?: string }): Promise<{ paymentStatus: JobPaymentStatus; remainingBalance: number; amountPaid: number }> {
+    const drawerSyncSince = new Date(Date.now() - 1_000).toISOString();
     const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const tx = await localDb.transactions.get(id);
       if (!tx) throw new Error('Job not found');
@@ -1376,6 +1443,7 @@ export const jobService = {
       return { paymentStatus, remainingBalance, amountPaid };
     });
     await queueTransactionTracking(id);
+    void queueRecentDrawerEntries(drawerSyncSince);
     return result;
   },
 
@@ -1441,11 +1509,17 @@ export const transactionItemService = {
   },
 
   async create(item: Omit<TransactionItem, 'id'>): Promise<number> {
-    return localDb.transactionItems.add({ ...item, createdAt: nowISO() } as any);
+    const id = await localDb.transactionItems.add({ ...item, createdAt: nowISO() } as any);
+    await queueSyncRecord('transactionItems', id);
+    if (item.transactionId) void queueSyncRecord('transactions', item.transactionId);
+    return id;
   },
 
   async delete(id: number): Promise<void> {
+    const row = await localDb.transactionItems.get(id);
+    if (row) await queueSyncDelete('transactionItems', row);
     await localDb.transactionItems.delete(id);
+    if (row?.transactionId) void queueSyncRecord('transactions', row.transactionId);
   },
 };
 
@@ -1480,6 +1554,7 @@ export const defectiveItemService = {
       productName: item.productName || product?.name || 'Unknown Product',
       createdAt: now,
     } as any);
+    await queueSyncRecord('defectiveItems', id);
     if (product) {
       await productService.update(item.productId, {
         stock: Math.max(0, (product.stock || 0) - (item.quantity || 1)),
@@ -1489,7 +1564,7 @@ export const defectiveItemService = {
   },
 
   async delete(id: number): Promise<void> {
-    await localDb.defectiveItems.delete(id);
+    await deleteLocalAndQueue('defectiveItems', id);
   },
 };
 
@@ -1518,15 +1593,18 @@ export const backjobService = {
 
   async create(backjob: Omit<Backjob, 'id'>): Promise<number> {
     const now = nowISO();
-    return localDb.backjobs.add({ ...backjob, createdAt: now, updatedAt: now } as any);
+    const id = await localDb.backjobs.add({ ...backjob, createdAt: now, updatedAt: now } as any);
+    await queueSyncRecord('backjobs', id);
+    return id;
   },
 
   async update(id: number, backjob: Partial<Backjob>): Promise<void> {
     await localDb.backjobs.update(id, { ...backjob, updatedAt: nowISO() } as any);
+    await queueSyncRecord('backjobs', id);
   },
 
   async delete(id: number): Promise<void> {
-    await localDb.backjobs.delete(id);
+    await deleteLocalAndQueue('backjobs', id);
   },
 
   async getByStatus(status: string): Promise<Backjob[]> {
@@ -1585,7 +1663,9 @@ export const cashDrawerService = {
   },
 
   async addEntry(entry: Omit<CashDrawerEntry, 'id'>): Promise<number> {
-    return localDb.cashDrawerEntries.add({ ...entry, createdAt: nowISO() } as any);
+    const id = await localDb.cashDrawerEntries.add({ ...entry, createdAt: nowISO() } as any);
+    await queueSyncRecord('cashDrawerEntries', id);
+    return id;
   },
 };
 
@@ -1601,7 +1681,9 @@ export const gcashDrawerService = {
   },
 
   async addEntry(entry: Omit<GcashDrawerEntry, 'id'>): Promise<number> {
-    return localDb.gcashDrawerEntries.add({ ...entry, createdAt: nowISO() } as any);
+    const id = await localDb.gcashDrawerEntries.add({ ...entry, createdAt: nowISO() } as any);
+    await queueSyncRecord('gcashDrawerEntries', id);
+    return id;
   },
 };
 
@@ -1637,11 +1719,14 @@ export const settingsService = {
     const existing = await localDb.settings.where('key').equals(key).first();
 
     const now = nowISO();
+    let id: number;
     if (existing) {
       await localDb.settings.update(existing.id, { value, updatedAt: now } as any);
+      id = existing.id;
     } else {
-      await localDb.settings.add({ key, value, createdAt: now, updatedAt: now } as any);
+      id = await localDb.settings.add({ key, value, createdAt: now, updatedAt: now } as any);
     }
+    await queueSyncRecord('settings', id);
   },
 };
 
@@ -1940,7 +2025,7 @@ export const activityService = {
   ): Promise<void> {
     try {
       const user = currentSessionUser();
-      await localDb.activityLogs.add({
+      const id = await localDb.activityLogs.add({
         createdAt: new Date().toISOString(),
         username: user.username,
         userRole: user.role,
@@ -1951,6 +2036,8 @@ export const activityService = {
         summary,
         details: opts?.details,
       } as any);
+      await queueSyncRecord('activityLogs', id, { flush: false });
+      void flushSyncOutbox();
     } catch (e) {
       console.warn('Activity log failed:', e);
     }
@@ -1966,6 +2053,8 @@ export const activityService = {
   },
 
   async clear(): Promise<void> {
+    const rows = await localDb.activityLogs.toArray();
+    if (rows.length > 0) await queueDeletedRows('activityLogs', rows);
     await localDb.activityLogs.clear();
   },
 };

@@ -4,6 +4,8 @@
  */
 
 import { localDb } from './local-db';
+import { SYNC_TABLE_NAMES } from './db-types';
+import { flushSyncOutbox, queueDeletedRows } from './sync-engine';
 import {
   productService,
   serviceService,
@@ -34,6 +36,14 @@ export async function seedDatabaseIfNeeded() {
         key: SEED_FLAG,
         value: true,
       } as any);
+      return;
+    }
+
+    // A fresh device that just pulled an existing cloud shop must not upload
+    // demo products/services on top of the real (possibly empty) catalog.
+    const cloudPrepared = await localDb.meta.get('sync.cloudPrepared');
+    if (cloudPrepared?.value === true) {
+      await localDb.meta.put({ key: SEED_FLAG, value: true } as any);
       return;
     }
 
@@ -233,6 +243,28 @@ export async function seedDatabaseIfNeeded() {
 export async function resetDatabase() {
   try {
     console.log('Resetting database...');
+
+    const syncRows = await Promise.all(
+      SYNC_TABLE_NAMES.map(async (name) => {
+        try {
+          const rows = await (localDb as any)[name].toArray();
+          return { name, rows } as const;
+        } catch {
+          return { name, rows: [] } as const;
+        }
+      }),
+    );
+
+    for (const { name, rows } of syncRows) {
+      if (rows.length > 0) {
+        try {
+          await queueDeletedRows(name, rows, { flush: false });
+        } catch (error) {
+          console.warn(`Could not queue deletions for ${name}:`, error);
+        }
+      }
+    }
+
     const tables = [
       'products',
       'services',
@@ -246,11 +278,21 @@ export async function resetDatabase() {
       'users',
       'settings',
       'meta',
+      'activityLogs',
+      'trackingOutbox',
     ];
 
     for (const table of tables) {
-      await (localDb as any)[table].clear();
+      try {
+        await (localDb as any)[table].clear();
+      } catch (error) {
+        console.warn(`Failed to clear ${table} during reset:`, error);
+      }
     }
+
+    // Push the tombstones before returning when online. If offline they stay
+    // queued and the next sync will delete the cloud rows before pulling.
+    await flushSyncOutbox(true);
 
     console.log('✓ Database reset successfully');
   } catch (error) {

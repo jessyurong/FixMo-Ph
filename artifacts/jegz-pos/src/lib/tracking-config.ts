@@ -15,6 +15,7 @@ export const SUPABASE_URL = trimTrailingSlash(String(env.VITE_SUPABASE_URL || ''
 export const SUPABASE_ANON_KEY = String(env.VITE_SUPABASE_ANON_KEY || '').trim();
 export const SUPABASE_SHOP_EMAIL = String(env.VITE_SUPABASE_SHOP_EMAIL || '').trim();
 export const SUPABASE_SHOP_PASSWORD = String(env.VITE_SUPABASE_SHOP_PASSWORD || '');
+export const SUPABASE_SHOP_ID = String(env.VITE_SUPABASE_SHOP_ID || 'fixmo-ph').trim() || 'fixmo-ph';
 export const PUBLIC_TRACKING_URL = trimTrailingSlash(String(env.VITE_PUBLIC_URL || '').trim());
 
 /** Can the app read from / subscribe to the public mirror? */

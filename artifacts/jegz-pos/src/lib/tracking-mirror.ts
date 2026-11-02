@@ -10,7 +10,7 @@
  * Phone, email, prices, passcodes, serials, and internal notes are never sent.
  */
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { localDb } from './local-db';
 import {
   REPAIR_STATUSES,
@@ -23,27 +23,17 @@ import {
   type TransactionStatus,
 } from './db-types';
 import { generateTrackingToken } from './tracking-token';
-import {
-  SUPABASE_ANON_KEY,
-  SUPABASE_SHOP_EMAIL,
-  SUPABASE_SHOP_PASSWORD,
-  SUPABASE_URL,
-  hasShopSyncCredentials,
-  isSupabaseConfigured,
-  trackingChannelName,
-} from './tracking-config';
+import { isSupabaseConfigured, trackingChannelName } from './tracking-config';
 import { DEFAULT_SHOP_NAME } from './shop-profile';
+import { getAuthenticatedShopClient, supabaseErrorMessage } from './supabase-shop';
+import { queueTransactionSync } from './sync-engine';
 
 const MAX_HISTORY = 50;
 const MAX_NOTE = 240;
-const AUTH_FAILURE_BACKOFF_MS = 30_000;
 
-let shopClient: SupabaseClient | null = null;
 let flushPromise: Promise<void> | null = null;
 let flushAgain = false;
 let lastFlushAt = 0;
-let lastAuthFailureAt = 0;
-let lastAuthError = '';
 let syncStarted = false;
 
 function normalizeStatus(value: unknown): TransactionStatus {
@@ -199,58 +189,6 @@ async function loadShopName(): Promise<string> {
   }
 }
 
-function getShopClient(): SupabaseClient {
-  if (!shopClient) {
-    shopClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false,
-        storageKey: 'fixmo-tracking-shop-auth',
-      },
-    });
-  }
-  return shopClient;
-}
-
-/** Use the persisted shop session, or sign in with the dedicated shop account. */
-async function getAuthenticatedShopClient(): Promise<SupabaseClient> {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase tracking is not configured');
-  }
-
-  if (lastAuthFailureAt && Date.now() - lastAuthFailureAt < AUTH_FAILURE_BACKOFF_MS) {
-    throw new Error(lastAuthError || 'Shop authentication is temporarily paused');
-  }
-
-  const client = getShopClient();
-  const { data, error } = await client.auth.getSession();
-  if (error) {
-    lastAuthFailureAt = Date.now();
-    lastAuthError = error.message;
-    throw error;
-  }
-  if (data.session) return client;
-
-  if (!hasShopSyncCredentials()) {
-    throw new Error('Missing VITE_SUPABASE_SHOP_EMAIL / VITE_SUPABASE_SHOP_PASSWORD');
-  }
-
-  const { error: signInError } = await client.auth.signInWithPassword({
-    email: SUPABASE_SHOP_EMAIL,
-    password: SUPABASE_SHOP_PASSWORD,
-  });
-  if (signInError) {
-    lastAuthFailureAt = Date.now();
-    lastAuthError = signInError.message;
-    throw signInError;
-  }
-
-  lastAuthFailureAt = 0;
-  lastAuthError = '';
-  return client;
-}
-
 /**
  * Keep the public page live without a second table subscription. The token is
  * the channel secret; the page only uses this signal to re-fetch the canonical
@@ -286,22 +224,6 @@ function broadcastTrackingChange(client: SupabaseClient, token: string): void {
   }
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>;
-    const parts = [record.message, record.details, record.hint, record.code]
-      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
-    if (parts.length > 0) return parts.join(' — ');
-    try {
-      return JSON.stringify(error);
-    } catch {
-      // Fall through to the generic string conversion.
-    }
-  }
-  return String(error || 'Unknown sync error');
-}
-
 async function markOutboxFailure(entry: TrackingOutboxEntry, error: unknown): Promise<void> {
   await localDb.transaction('rw', localDb.trackingOutbox, async () => {
     const current = await localDb.trackingOutbox.get(entry.token);
@@ -314,7 +236,7 @@ async function markOutboxFailure(entry: TrackingOutboxEntry, error: unknown): Pr
       return;
     }
 
-    const message = errorMessage(error);
+    const message = supabaseErrorMessage(error);
     await localDb.trackingOutbox.put({
       ...current,
       attempts: current.attempts + 1,
@@ -443,6 +365,9 @@ export async function queueTransactionTracking(
       createdAt: previous?.createdAt || now,
       updatedAt: now,
     });
+
+    // Keep the full local-first mirror in step with the customer-facing one.
+    void queueTransactionSync(tx.id);
 
     if (flushPromise) flushAgain = true;
     // Status changes should appear on the customer page promptly; bypass the
