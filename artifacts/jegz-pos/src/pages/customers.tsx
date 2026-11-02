@@ -69,6 +69,7 @@ export default function CustomersPage() {
   const txToPrintSource = (tx: EnrichedTransaction): PrintSource => ({
     id: tx.id,
     jobNumber: tx.jobNumber,
+    trackingToken: tx.trackingToken,
     status: tx.status,
     customerName: tx.customerName,
     customerPhone: tx.customerPhone,

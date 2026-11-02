@@ -1,5 +1,6 @@
 import type { ShopProfile } from "./shop-profile";
 import { formatCurrency } from "./utils";
+import { legacyTrackingPageUrl, trackingPageUrl } from "./tracking-config";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QRCodeSVG } from "qrcode.react";
@@ -57,6 +58,8 @@ function round2(n: number): number {
 export interface PrintSource {
   id?: number;
   jobNumber?: string;
+  /** Unguessable public token used for the customer tracking QR. */
+  trackingToken?: string;
   status?: string;
   customerName?: string;
   customerPhone?: string;
@@ -118,9 +121,12 @@ function buildPrintHtml(
   const remainingBalance = Number(source.remainingBalance ?? Math.max(0, round2(total - amountPaid)));
   const paymentStatus = paymentStatusLabel(source.paymentStatus, total, amountPaid);
 
-  const trackUrl = source.id != null
-    ? `${window.location.origin}/track?ticket=${encodeURIComponent(String(source.id))}`
-    : "";
+  const trackUrl = trackingPageUrl(source.trackingToken)
+    || (source.id != null
+      ? legacyTrackingPageUrl(source.id)
+      : source.jobNumber
+        ? legacyTrackingPageUrl(source.jobNumber)
+        : "");
   const qrMarkup = trackUrl
     ? renderToStaticMarkup(createElement(QRCodeSVG, {
         value: trackUrl,

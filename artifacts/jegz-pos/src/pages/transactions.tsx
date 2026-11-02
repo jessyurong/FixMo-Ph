@@ -19,6 +19,11 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { printJobSlip, printReceipt, type PrintSource } from "@/lib/printing";
+import {
+  isSupabaseConfigured,
+  legacyTrackingPageUrl,
+  trackingPageUrl,
+} from "@/lib/tracking-config";
 import { useShopProfile, useGetSettings } from "@/lib/offline-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -288,6 +293,7 @@ const displayData = filtered || [];
   const txToPrintSource = (tx: EnrichedTransaction): PrintSource => ({
     id: tx.id,
     jobNumber: tx.jobNumber,
+    trackingToken: tx.trackingToken,
     status: tx.status,
     customerName: tx.customerName,
     customerPhone: tx.customerPhone,
@@ -320,10 +326,17 @@ const displayData = filtered || [];
   };
 
   const handleShareTrackingLink = async (tx: EnrichedTransaction) => {
-    const trackingUrl = `${window.location.origin}/track?ticket=${tx.id}`;
+    const liveTokenUrl = trackingPageUrl(tx.trackingToken);
+    const trackingUrl = liveTokenUrl || legacyTrackingPageUrl(tx.jobNumber || tx.id);
     try {
       await navigator.clipboard.writeText(trackingUrl);
-      toast({ title: "Tracking link copied!" });
+      toast({
+        title: "Tracking link copied!",
+        description:
+          liveTokenUrl && isSupabaseConfigured()
+            ? "This link updates live from any device."
+            : "Local link copied. Configure Supabase for cross-device tracking.",
+      });
     } catch {
       toast({ title: "Could not copy tracking link", description: trackingUrl, variant: "destructive" });
     }

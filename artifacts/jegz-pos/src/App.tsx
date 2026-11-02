@@ -35,6 +35,7 @@ function AppContent() {
     <Switch>
       {/* Public routes — no login required (customers can open these directly) */}
       <Route path="/track" component={TrackPage} />
+      <Route path="/track/:token" component={TrackPage} />
 
       {/* Everything else stays behind the auth gate */}
       <Route>

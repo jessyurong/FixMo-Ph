@@ -37,11 +37,14 @@ import type {
   Settings,
   Technician,
   TechnicianReportRow,
+  TrackingHistoryEvent,
   Transaction,
   TransactionItem,
   TransactionStatus,
   TransactionStats,
 } from './db-types';
+import { generateTrackingToken } from './tracking-token';
+import { queueTransactionTracking } from './tracking-mirror';
 
 export type {
   ActivityLog,
@@ -129,6 +132,18 @@ export function repairStatusFor(tx: Pick<Transaction, 'status' | 'repair_status'
     default:
       return 'received';
   }
+}
+
+/** Append a repair-progress event without duplicating consecutive statuses. */
+export function appendTrackingHistory(
+  existing: TrackingHistoryEvent[] | undefined,
+  status: RepairStatus,
+  timestamp: string,
+): TrackingHistoryEvent[] {
+  const history = Array.isArray(existing) ? existing.slice(-49) : [];
+  if (history.length === 0) return [{ status, timestamp }];
+  if (history[history.length - 1].status === status) return history;
+  return [...history, { status, timestamp }];
 }
 
 export function paymentStatusFor(total: number | undefined, amountPaid: number | undefined): JobPaymentStatus {
@@ -567,12 +582,17 @@ export const transactionService = {
 
   async create(transaction: Omit<Transaction, 'id'>): Promise<number> {
     const now = nowISO();
-    return localDb.transactions.add({
+    const repairStatus = normalizeRepairStatus(transaction.repair_status);
+    const id = await localDb.transactions.add({
       ...transaction,
-      repair_status: normalizeRepairStatus(transaction.repair_status),
+      repair_status: repairStatus,
+      trackingToken: transaction.trackingToken || generateTrackingToken(),
+      trackingHistory: transaction.trackingHistory || [{ status: repairStatus, timestamp: now }],
       createdAt: now,
       updatedAt: now,
     } as any);
+    await queueTransactionTracking(id);
+    return id;
   },
 
   /** Legacy direct completion. Routes through the full job flow when possible. */
@@ -581,10 +601,13 @@ export const transactionService = {
     const status = normalizeStatus(transaction.status);
     const now = nowISO();
 
+    const repairStatus = normalizeRepairStatus(transaction.repair_status);
     const txId = await localDb.transactions.add({
       ...transaction,
       status,
-      repair_status: normalizeRepairStatus(transaction.repair_status),
+      repair_status: repairStatus,
+      trackingToken: transaction.trackingToken || generateTrackingToken(),
+      trackingHistory: transaction.trackingHistory || [{ status: repairStatus, timestamp: now }],
       jobNumber,
       customerName: (transaction.customerName as string) || transaction.customer || 'Walk-in',
       customer: (transaction.customerName as string) || transaction.customer || 'Walk-in',
@@ -606,11 +629,13 @@ export const transactionService = {
         }
       }
     }
+    await queueTransactionTracking(txId);
     return txId;
   },
 
   async update(id: number, transaction: Partial<Transaction>): Promise<void> {
     await localDb.transactions.update(id, { ...transaction, updatedAt: nowISO() });
+    await queueTransactionTracking(id);
   },
 
   async delete(id: number): Promise<void> {
@@ -779,6 +804,7 @@ export interface JobCompletionResult {
   change?: number;
   createdAt: string;
   status: TransactionStatus;
+  trackingToken?: string;
 }
 
 function txRecordFromJobInput(input: JobInput): Omit<Transaction, 'id'> {
@@ -1096,14 +1122,18 @@ export const customerService = {
 
 export const jobService = {
   /** Save the current POS job as a pending transaction (status pending). */
-  async saveAsPending(input: JobInput): Promise<{ id: number; jobNumber: string }> {
-    return localDb.transaction('rw', JOB_TABLES, async () => {
+  async saveAsPending(input: JobInput): Promise<{ id: number; jobNumber: string; trackingToken: string }> {
+    const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const jobNumber = await generateJobNumber();
       const now = nowISO();
       const record = txRecordFromJobInput(input);
+      const trackingToken = generateTrackingToken();
       const id = await localDb.transactions.add({
         ...record,
         status: 'pending',
+        repair_status: 'received',
+        trackingToken,
+        trackingHistory: [{ status: 'received', timestamp: now }],
         jobNumber,
         createdAt: now,
         updatedAt: now,
@@ -1116,8 +1146,10 @@ export const jobService = {
       if (amountPaid > 0) {
         await addDrawerDepositEntry(record.paymentMethod || 'cash', amountPaid, `Deposit — ${jobNumber} (${record.customerName})`);
       }
-      return { id, jobNumber };
+      return { id, jobNumber, trackingToken };
     });
+    await queueTransactionTracking(result.id);
+    return result;
   },
 
   /** Re-open / edit an existing pending job. Never creates a duplicate. */
@@ -1125,14 +1157,15 @@ export const jobService = {
     id: number,
     input: JobInput,
     opts?: { additionalDeposit?: number; additionalDepositMethod?: 'cash' | 'gcash'; status?: TransactionStatus },
-  ): Promise<{ id: number; jobNumber: string }> {
-    return localDb.transaction('rw', JOB_TABLES, async () => {
+  ): Promise<{ id: number; jobNumber: string; trackingToken: string }> {
+    const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const existing = await localDb.transactions.get(id);
       if (!existing) throw new Error('Job not found');
       if (!isOpenStatus(existing.status)) throw new Error('Only open jobs can be edited');
 
       const oldItems = await localDb.transactionItems.where('transactionId').equals(id).toArray();
       const jobNumber = existing.jobNumber || (await generateJobNumber());
+      const trackingToken = existing.trackingToken || generateTrackingToken();
       const now = nowISO();
 
       // Release old reservations, replace items, reserve new.
@@ -1152,6 +1185,7 @@ export const jobService = {
         total,
         totalAmount: total,
         jobNumber,
+        trackingToken,
         status: normalizeStatus(opts?.status) || existing.status,
         repair_status: repairStatusFor(existing),
         amountPaid,
@@ -1166,8 +1200,10 @@ export const jobService = {
         await addDrawerDepositEntry(method || 'cash', additionalDeposit, `Deposit — ${jobNumber} (${record.customerName})`);
       }
 
-      return { id, jobNumber };
+      return { id, jobNumber, trackingToken };
     });
+    await queueTransactionTracking(result.id);
+    return result;
   },
 
   /** Finalize an existing pending job: completes it, deducts stock, records payment. */
@@ -1175,7 +1211,7 @@ export const jobService = {
     id: number,
     opts: { paymentMethod: 'cash' | 'gcash'; cashReceived?: number },
   ): Promise<JobCompletionResult> {
-    return localDb.transaction('rw', JOB_TABLES, async () => {
+    const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const tx = await localDb.transactions.get(id);
       if (!tx) throw new Error('Job not found');
       if (isCompletedStatus(tx.status)) throw new Error('Job is already completed');
@@ -1204,9 +1240,13 @@ export const jobService = {
       }
 
       const paid = round2(prevPaid + remaining);
+      const trackingToken = tx.trackingToken || generateTrackingToken();
+      const trackingHistory = appendTrackingHistory(tx.trackingHistory, 'ready_for_pickup', now);
       await localDb.transactions.update(id, {
         status: 'completed',
         repair_status: 'ready_for_pickup',
+        trackingToken,
+        trackingHistory,
         paymentMethod: method,
         amountPaid: paid,
         totalAmount: total,
@@ -1237,18 +1277,22 @@ export const jobService = {
         cashReceived,
         change: method === 'cash' && cashReceived ? Math.max(0, round2(cashReceived - remaining)) : undefined,
         createdAt: now,
-        status: 'completed',
+        status: 'completed' as TransactionStatus,
+        trackingToken,
       };
     });
+    await queueTransactionTracking(result.id);
+    return result;
   },
 
   /** Complete a brand new sale from the POS without a pending step. */
   async completeNewJob(input: JobInput, opts?: { cashReceived?: number }): Promise<JobCompletionResult> {
-    return localDb.transaction('rw', JOB_TABLES, async () => {
+    const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const jobNumber = await generateJobNumber();
       const now = nowISO();
       const record = txRecordFromJobInput(input);
       const total = record.totalAmount ?? 0;
+      const trackingToken = generateTrackingToken();
 
       const stockCheck = await validateStockForReduction(input.items);
       if (!stockCheck.ok) throw new Error(stockCheck.message);
@@ -1257,6 +1301,8 @@ export const jobService = {
         ...record,
         status: 'completed',
         repair_status: 'ready_for_pickup',
+        trackingToken,
+        trackingHistory: [{ status: 'ready_for_pickup', timestamp: now }],
         jobNumber,
         total,
         totalAmount: total,
@@ -1294,14 +1340,17 @@ export const jobService = {
         cashReceived,
         change: method === 'cash' && cashReceived ? Math.max(0, round2(cashReceived - total)) : undefined,
         createdAt: now,
-        status: 'completed',
+        status: 'completed' as TransactionStatus,
+        trackingToken,
       };
     });
+    await queueTransactionTracking(result.id);
+    return result;
   },
 
   /** Record a deposit against an open job. Does NOT mark paid unless paid >= total. */
   async recordDeposit(id: number, opts: { amount: number; method: 'cash' | 'gcash'; note?: string }): Promise<{ paymentStatus: JobPaymentStatus; remainingBalance: number; amountPaid: number }> {
-    return localDb.transaction('rw', JOB_TABLES, async () => {
+    const result = await localDb.transaction('rw', JOB_TABLES, async () => {
       const tx = await localDb.transactions.get(id);
       if (!tx) throw new Error('Job not found');
       if (!isOpenStatus(tx.status)) throw new Error('Only open jobs can receive deposits');
@@ -1326,6 +1375,8 @@ export const jobService = {
 
       return { paymentStatus, remainingBalance, amountPaid };
     });
+    await queueTransactionTracking(id);
+    return result;
   },
 
   /** Update the technician's repair progress (independent from the job status). */
@@ -1334,11 +1385,14 @@ export const jobService = {
     await localDb.transaction('rw', JOB_TABLES, async () => {
       const tx = await localDb.transactions.get(id);
       if (!tx) throw new Error('Job not found');
+      const now = nowISO();
       await localDb.transactions.update(id, {
         repair_status: next,
-        updatedAt: nowISO(),
+        trackingHistory: appendTrackingHistory(tx.trackingHistory, next, now),
+        updatedAt: now,
       } as any);
     });
+    await queueTransactionTracking(id);
   },
 
   /** Advance a job's status. Cancelling an open job releases its stock reservations. */
@@ -1356,6 +1410,7 @@ export const jobService = {
       }
       await localDb.transactions.update(id, { status, updatedAt: nowISO() } as any);
     });
+    await queueTransactionTracking(id);
   },
 
   /** Cancel an open job and release its reservations. */

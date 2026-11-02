@@ -443,6 +443,9 @@ importers:
 
   artifacts/jegz-pos:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.118.0
+        version: 2.118.0
       qrcode.react:
         specifier: ^4.2.0
         version: 4.2.0(react@19.1.0)

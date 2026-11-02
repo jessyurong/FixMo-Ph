@@ -35,6 +35,48 @@ export type RepairStatus = typeof REPAIR_STATUSES[number];
 
 export type JobPaymentStatus = 'unpaid' | 'partial' | 'paid';
 
+// ─── Public tracking mirror ─────────────────────────────────────────────────
+/**
+ * Customer-safe repair status history. Mirrored to Supabase so the public
+ * tracking page can show progress without exposing internal job data.
+ */
+export interface TrackingHistoryEvent {
+  status: RepairStatus;
+  timestamp: string;
+  note?: string;
+}
+
+/**
+ * The only customer-visible data that is mirrored to Supabase.
+ * Deliberately excludes phone, email, prices, passcodes, serials, and notes.
+ */
+export interface TrackingMirrorPayload {
+  /** Unguessable public token (primary key of the Supabase `tracking` table). */
+  token: string;
+  shop_name: string;
+  job_number: string;
+  /** Example: "Samsung A14". */
+  device_label: string;
+  /** Current transaction/job status. */
+  status: TransactionStatus;
+  /** Current technician repair progress. */
+  repair_status: RepairStatus;
+  status_history: TrackingHistoryEvent[];
+  /** First name only, for a friendly public page. */
+  customer_first_name: string;
+  updated_at: string;
+}
+
+/** A pending Supabase upsert while the POS is offline. One row per ticket. */
+export interface TrackingOutboxEntry {
+  token: string;
+  payload: TrackingMirrorPayload;
+  attempts: number;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Entities ───────────────────────────────────────────────────────────────
 export interface Product {
   id: number;
@@ -151,6 +193,10 @@ export interface Transaction {
   status: TransactionStatus;
   /** Technician work progress — independent from the transaction status. */
   repair_status?: RepairStatus;
+  /** Random URL-safe token used by the public tracking page. */
+  trackingToken?: string;
+  /** Customer-facing repair progress history (oldest first). */
+  trackingHistory?: TrackingHistoryEvent[];
   total?: number;
   totalAmount?: number;
   amountPaid?: number;

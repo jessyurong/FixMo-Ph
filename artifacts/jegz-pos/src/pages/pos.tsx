@@ -20,6 +20,7 @@ import {
 } from "@/lib/offline-api";
 import { formatCurrency } from "@/lib/utils";
 import { printJobSlip, printReceipt, type PrintSource } from "@/lib/printing";
+import { legacyTrackingPageUrl, trackingPageUrl } from "@/lib/tracking-config";
 import { QRCodeSVG } from "qrcode.react";
 import { useShopProfile } from "@/lib/offline-api";
 import { Button } from "@/components/ui/button";
@@ -126,7 +127,7 @@ export default function PosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<JobCompletionResult | null>(null);
   const receiptTrackUrl = receipt
-    ? `${window.location.origin}/track?ticket=${receipt.id}`
+    ? trackingPageUrl(receipt.trackingToken) || legacyTrackingPageUrl(receipt.id)
     : "";
   const [pendingSlip, setPendingSlip] = useState<PrintSource | null>(null);
   const [editingJob, setEditingJob] = useState<EditingJob | null>(null);
@@ -485,9 +486,10 @@ export default function PosPage() {
   /*
    * SAVE AS PENDING / SAVE CHANGES
    */
-  const buildSlipSource = (job: { id: number; jobNumber: string }): PrintSource => ({
+  const buildSlipSource = (job: { id: number; jobNumber: string; trackingToken?: string }): PrintSource => ({
     id: job.id,
     jobNumber: job.jobNumber,
+    trackingToken: (job as { trackingToken?: string }).trackingToken,
     status: editingJob?.status || "pending",
     customerName: customerName.trim() || "Walk-in",
     customerPhone: customerPhone.trim() || undefined,
@@ -527,7 +529,7 @@ export default function PosPage() {
         ...buildJobInput(),
         amountPaid: editingJob ? undefined : totalDeposit,
       };
-      let result: { id: number; jobNumber: string };
+      let result: { id: number; jobNumber: string; trackingToken?: string };
       if (editingJob) {
         result = await updatePendingJob.mutateAsync({
           id: editingJob.id,

@@ -11,9 +11,11 @@ import type {
   Service,
   Settings,
   Technician,
+  TrackingOutboxEntry,
   Transaction,
   TransactionItem,
 } from './db-types';
+import { generateTrackingToken } from './tracking-token';
 
 export type LocalRecord = { id?: number; createdAt?: string; updatedAt?: string; [key: string]: unknown };
 
@@ -31,6 +33,7 @@ class JegzLocalDB extends Dexie {
   settings!: EntityTable<Settings, 'id'>;
   meta!: EntityTable<MetaRecord, 'key'>;
   activityLogs!: EntityTable<ActivityLog, 'id'>;
+  trackingOutbox!: EntityTable<TrackingOutboxEntry, 'token'>;
 
   constructor() {
     super('JEGZ_POS_OFFLINE_DB');
@@ -93,6 +96,31 @@ class JegzLocalDB extends Dexie {
       settings: '++id,key',
       meta: 'key'
     });
+    this.version(5)
+      .stores({
+        products: '++id,name,category,deviceType,stock,createdAt',
+        services: '++id,name,type',
+        technicians: '++id,name',
+        transactions:
+          '++id,customerName,customerPhone,phoneBrand,phoneModel,jobNumber,technicianId,paymentMethod,status,trackingToken,createdAt,customer,unit',
+        transactionItems: '++id,transactionId,type,refId,isPreOrder',
+        cashDrawerEntries: '++id,type,createdAt',
+        gcashDrawerEntries: '++id,type,createdAt',
+        defectiveItems: '++id,productId,createdAt',
+        backjobs: '++id,customer,technicianId,status,createdAt',
+        users: '++id,username,role,isActive,createdAt',
+        settings: '++id,key',
+        meta: 'key',
+        activityLogs: '++id,createdAt,username,action',
+        trackingOutbox: 'token,updatedAt',
+      })
+      .upgrade(async (tx) => {
+        await tx.table('transactions').toCollection().modify((row: Record<string, unknown>) => {
+          if (typeof row.trackingToken !== 'string' || row.trackingToken.trim().length < 12) {
+            row.trackingToken = generateTrackingToken();
+          }
+        });
+      });
   }
 }
 

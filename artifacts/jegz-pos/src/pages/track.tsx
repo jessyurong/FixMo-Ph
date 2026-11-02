@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "wouter";
+import { useLocation, useParams, useSearchParams } from "wouter";
 import {
   Activity,
   BadgeCheck,
@@ -36,6 +36,12 @@ import {
   type EnrichedTransaction,
   type RepairStatus,
 } from "@/lib/offline-api";
+import { isValidTrackingToken } from "@/lib/tracking-token";
+import {
+  fetchPublicTracking,
+  subscribePublicTracking,
+  type PublicTrackingRow,
+} from "@/lib/tracking-public";
 
 const AUTO_REFRESH_MS = 30_000;
 const REFRESH_SECONDS = Math.round(AUTO_REFRESH_MS / 1000);
@@ -67,6 +73,10 @@ type TrackedJob = {
   complaint?: string;
   diagnosis?: string;
   notes?: string;
+  /** True when the data came from the privacy-filtered Supabase mirror. */
+  publicMirror?: boolean;
+  /** Last time the mirror row was written by the shop. */
+  mirrorUpdatedAt?: string;
 };
 
 type ApiTransaction = {
@@ -309,10 +319,38 @@ function fromApi(raw: unknown, fallbackTicket: string): TrackedJob | null {
   };
 }
 
+function fromMirror(row: PublicTrackingRow, fallbackTicket: string): TrackedJob {
+  const status = normalizeStatus(row.status);
+  const repairStatus = row.repair_status
+    ? normalizeRepairStatus(row.repair_status)
+    : repairStatusFor({ status });
+  const history = Array.isArray(row.status_history)
+    ? row.status_history.filter(isRecord)
+    : [];
+  const firstTimestamp = history.find(
+    (entry) => typeof entry.timestamp === "string",
+  )?.timestamp;
+
+  return {
+    ticket: row.job_number || fallbackTicket,
+    jobNumber: row.job_number || undefined,
+    customerName: row.customer_first_name || "Customer",
+    device: row.device_label || "Device",
+    technicianName: "—",
+    createdAt: typeof firstTimestamp === "string" ? firstTimestamp : row.updated_at,
+    status,
+    repairStatus,
+    items: [],
+    total: 0,
+    publicMirror: true,
+    mirrorUpdatedAt: row.updated_at,
+  };
+}
+
 /**
  * Resolve a ticket from the shop's local IndexedDB first (works offline on the
- * shop device), then fall back to the existing transaction API so the link can
- * also work on a customer's phone when an API is available.
+ * shop device), then the public Supabase mirror (works from any customer
+ * device), then the legacy transaction API.
  */
 async function resolveTicket(ticket: string): Promise<TrackedJob | null> {
   const value = ticket.trim();
@@ -324,15 +362,36 @@ async function resolveTicket(ticket: string): Promise<TrackedJob | null> {
       if (local) return fromEnriched(local);
     }
 
-    const byJobNumber = (await transactionService.listRaw()).find(
-      (tx) => (tx.jobNumber || "").toLowerCase() === value.toLowerCase(),
+    const rawTransactions = await transactionService.listRaw();
+    const byToken = rawTransactions.find(
+      (tx) => (tx.trackingToken || "") === value,
+    );
+    if (byToken) {
+      const enriched = await transactionService.getEnriched(byToken.id);
+      if (enriched) return fromEnriched(enriched);
+    }
+
+    const byJobNumber = rawTransactions.find(
+      (tx) =>
+        (tx.jobNumber || "").toLowerCase() === value.toLowerCase() ||
+        (tx.trackingToken || "").toLowerCase() === value.toLowerCase(),
     );
     if (byJobNumber) {
       const enriched = await transactionService.getEnriched(byJobNumber.id);
       if (enriched) return fromEnriched(enriched);
     }
   } catch {
-    // Local lookup is best-effort; fall through to the API.
+    // Local lookup is best-effort; fall through to the public mirror.
+  }
+
+  if (isValidTrackingToken(value)) {
+    try {
+      const mirrored = await fetchPublicTracking(value);
+      if (mirrored) return fromMirror(mirrored, value);
+    } catch {
+      // Supabase may be unconfigured, offline, or the token may be unknown.
+      // Keep falling back so legacy local links still work.
+    }
   }
 
   try {
@@ -416,6 +475,16 @@ function useTrackedJob(ticket: string) {
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [ticket, secondsLeft, load]);
+
+  // Realtime: the shop broadcasts a signal after a successful Supabase upsert.
+  // The page re-fetches the canonical row through the RLS-protected endpoint;
+  // the 30-second poll below remains the fallback when realtime is unavailable.
+  useEffect(() => {
+    if (!job?.publicMirror || !isValidTrackingToken(ticket)) return;
+    return subscribePublicTracking(ticket, () => {
+      void load(true);
+    });
+  }, [job?.publicMirror, ticket, load]);
 
   // Refresh immediately when the customer returns to the tab.
   useEffect(() => {
@@ -515,13 +584,20 @@ function TicketLookup({
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function TrackPage() {
+  const params = useParams<{ token?: string }>();
+  const routeToken = (params.token || "").trim();
   const [searchParams, setSearchParams] = useSearchParams();
-  const ticket = (searchParams.get("ticket") || "").trim();
+  const [, navigate] = useLocation();
+  const ticket = routeToken || (searchParams.get("ticket") || "").trim();
   const shop = useShopProfile();
   const { job, state, lastUpdated, refreshing, secondsLeft, refresh } = useTrackedJob(ticket);
 
   const updateTicket = (next: string) => {
-    setSearchParams({ ticket: next }, { replace: true });
+    if (routeToken) {
+      navigate(`/track?ticket=${encodeURIComponent(next)}`, { replace: true });
+    } else {
+      setSearchParams({ ticket: next }, { replace: true });
+    }
   };
 
   const contactNumber = shop.contactNumber?.trim() || "+63 917 123 4567";
@@ -890,7 +966,9 @@ export default function TrackPage() {
               </div>
             </section>
 
-            {/* Services / parts */}
+            {/* Services / parts — hidden on the public mirror because the
+                mirror intentionally contains no prices or parts data. */}
+            {!job.publicMirror && (
             <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
               <div className="mb-1 flex items-center justify-between">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
@@ -967,9 +1045,10 @@ export default function TrackPage() {
                 )}
               </div>
             </section>
+            )}
 
-            {/* Notes */}
-            {(job.complaint || job.diagnosis || job.notes) && (
+            {/* Notes — also excluded from the public mirror. */}
+            {!job.publicMirror && (job.complaint || job.diagnosis || job.notes) && (
               <section className="space-y-2.5">
                 {job.complaint && (
                   <div className="rounded-2xl border border-border bg-card/60 p-4">

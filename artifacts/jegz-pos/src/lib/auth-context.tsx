@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { localDb } from "./local-db";
 import { activityService } from "./offline-data-services";
 import { seedDatabaseIfNeeded } from "./seed-data";
+import { startTrackingSync } from "./tracking-mirror";
 
 export type UserRole = "admin" | "staff";
 
@@ -67,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const dbUser = await localDb.users.get(parsed.id);
         if (dbUser && dbUser.isActive) {
           setUser(parsed);
+          startTrackingSync();
         } else {
           localStorage.removeItem(SESSION_KEY);
           setUser(null);
@@ -103,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
       setUser(currentUser);
+      startTrackingSync();
       void activityService.log("login", `${currentUser.username} signed in`, {
         entityType: "user", entityId: currentUser.id,
       });

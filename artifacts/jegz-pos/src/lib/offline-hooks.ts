@@ -432,7 +432,7 @@ export function useDeleteTransaction(): UseMutationResult<void, unknown, { id: n
 }
 
 // Job lifecycle hooks (Save as Pending / Edit / Complete / Cancel / Deposit)
-export function useSavePendingJob(): UseMutationResult<{ id: number; jobNumber: string }, unknown, JobInput, unknown> {
+export function useSavePendingJob(): UseMutationResult<{ id: number; jobNumber: string; trackingToken: string }, unknown, JobInput, unknown> {
   const invalidate = useInvalidateBusinessData();
   return useMutation({
     mutationFn: (input: JobInput) => jobService.saveAsPending(input),
@@ -441,7 +441,7 @@ export function useSavePendingJob(): UseMutationResult<{ id: number; jobNumber: 
 }
 
 export function useUpdatePendingJob(): UseMutationResult<
-  { id: number; jobNumber: string },
+  { id: number; jobNumber: string; trackingToken: string },
   unknown,
   { id: number; data: JobInput; additionalDeposit?: number; additionalDepositMethod?: 'cash' | 'gcash'; status?: TransactionStatus },
   unknown
