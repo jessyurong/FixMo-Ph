@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm -w run build:web",
+  "outputDirectory": "artifacts/jegz-pos/dist/public",
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,76 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ─── Build / generated output ────────────────────────────────────────────────
+dist/
+build/
+out-tsc
+.vite/
+dev-dist/
+.turbo/
+coverage/
+tmp
+
+# ─── TypeScript build/cache files ───────────────────────────────────────────
+*.tsbuildinfo
+
+# ─── Logs ───────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+testem.log
+
+# ─── Environment / secrets ──────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Local databases & backups ──────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.db3
+*.sqlite-wal
+*.sqlite-shm
+jegz-pos-backup-*.json
+*.backup.json
+
+# ─── Temporary / cache files ────────────────────────────────────────────────
+*.tmp
+*.temp
+.cache/
+.eslintcache
+/typings
+
+# ─── OS / editor files ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+/.sass-cache
+/connect.lock
+/libpeerconnection.log
+
+# ─── Replit / platform files ────────────────────────────────────────────────
+.cache/
+.local/
+.expo
+.expo-shared
+
+# ─── Local workspace overrides ──────────────────────────────────────────────
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md

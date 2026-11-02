@@ -1,0 +1,32 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "tqo1pJjNRCu1G_c3LZ36B"
+uri = "file://jegz-pos-system.tar.gz"
+type = "unspecified"
+title = "JEGZ Mobile Repair POS — Full Source Code"
+
+[[outputs]]
+id = "r5w7zh7B0UlFUr19hyv3H"
+uri = "file://jegz-pos-frontend.tar.gz"
+type = "unspecified"
+title = "JEGZ POS — Frontend Source"
+
+[[outputs]]
+id = "Eefpo6TSgF3asX_SOG8RX"
+uri = "file://jegz-pos-frontend.zip"
+type = "unspecified"
+title = "JEGZ POS — Frontend Source (ZIP)"
+
+[[outputs]]
+id = "qkMVZn_ozOQCuPONMISy4"
+uri = "file://jegz-pos-setup.txt"
+type = "text"
+title = "JEGZ POS — Frontend Source Extractor"
+
+[[outputs]]
+id = "qhaml6LzF4xBdrckko5nT"
+uri = "file://JEGZ-POS-SYSTEM-DOCS.md"
+type = "text"
+title = "JEGZ POS System — Complete Feature Documentation"

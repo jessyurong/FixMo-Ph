@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 10%;
+    --foreground: 0 0% 100%;
+    
+    --primary: 210 100% 50%; /* Vibrant blue */
+    --primary-foreground: 0 0% 100%;
+    
+    --accent: 45 100% 50%; /* Gold/Yellow for energetic filipino business feel */
+    --accent-foreground: 220 20% 10%;
+
+    --destructive: 0 84% 60%;
+    
+    --font-display: 'Plus Jakarta Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-display);
+  overflow: hidden;
+}
