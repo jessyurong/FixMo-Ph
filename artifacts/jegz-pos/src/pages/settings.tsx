@@ -538,7 +538,27 @@ function CloudSyncSection() {
           </Alert>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
+            {!status.hasShopCredentials ? (
+              <Alert>
+                <Cloud className="h-4 w-4" />
+                <AlertTitle>Shop login is not configured</AlertTitle>
+                <AlertDescription>
+                  Set <code>VITE_SUPABASE_SHOP_EMAIL</code> and <code>VITE_SUPABASE_SHOP_PASSWORD</code> in
+                  Vercel, then redeploy. Without them, changes stay queued on this device.
+                </AlertDescription>
+              </Alert>
+            ) : status.authError ? (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Supabase shop login failed</AlertTitle>
+                <AlertDescription className="break-words">
+                  {status.authError}. Create or reset the dedicated shop user in Supabase →
+                  Authentication → Users (enable “Auto Confirm User”), make sure the Vercel
+                  email/password match, then redeploy.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Connection</p>
                 <p className={cn("mt-1 font-semibold", status.online ? "text-emerald-600" : "text-amber-600")}>
@@ -548,6 +568,10 @@ function CloudSyncSection() {
               <div className="rounded-lg border p-3">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Pending changes</p>
                 <p className="mt-1 font-semibold">{status.pending}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Tracking queue</p>
+                <p className="mt-1 font-semibold">{status.trackingPending}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Last sync</p>

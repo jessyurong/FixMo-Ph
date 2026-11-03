@@ -263,7 +263,7 @@ export function flushTrackingOutbox(force = false): Promise<void> {
 
     let client: SupabaseClient;
     try {
-      client = await getAuthenticatedShopClient();
+      client = await getAuthenticatedShopClient(force);
     } catch (error) {
       console.warn('[tracking] shop authentication failed; changes remain queued.', error);
       return;
@@ -323,6 +323,7 @@ export function flushTrackingOutbox(force = false): Promise<void> {
  */
 export async function queueTransactionTracking(
   transactionOrId: Transaction | number,
+  opts?: { flush?: boolean; syncFullRecord?: boolean },
 ): Promise<void> {
   try {
     const tx =
@@ -347,6 +348,9 @@ export async function queueTransactionTracking(
       await localDb.transactions.update(tx.id, {
         trackingToken: token,
         trackingHistory: history,
+        // Tracking metadata is not a business edit; keep the record's sync
+        // timestamp so a one-time backfill cannot win a last-write-wins race.
+        updatedAt: tx.updatedAt || new Date().toISOString(),
       } as any);
       tx.trackingToken = token;
       tx.trackingHistory = history;
@@ -367,14 +371,57 @@ export async function queueTransactionTracking(
     });
 
     // Keep the full local-first mirror in step with the customer-facing one.
-    void queueTransactionSync(tx.id);
+    if (opts?.syncFullRecord !== false) void queueTransactionSync(tx.id);
 
+    if (opts?.flush === false) return;
     if (flushPromise) flushAgain = true;
     // Status changes should appear on the customer page promptly; bypass the
     // passive 15-second throttle for writes triggered by a real POS change.
     void flushTrackingOutbox(true);
   } catch (error) {
     console.warn('[tracking] could not queue mirror update:', error);
+  }
+}
+
+const TRACKING_BACKFILL_KEY = 'tracking.backfilledAt';
+
+/**
+ * Queue every local job for the public tracker. Used after a restore and for
+ * the one-time upgrade backfill. Returns the number of jobs queued.
+ */
+export async function queueAllTrackingRecords(opts?: { flush?: boolean }): Promise<number> {
+  const transactions = await localDb.transactions.toArray();
+  let queued = 0;
+  for (const tx of transactions) {
+    if (typeof tx.id !== 'number') continue;
+    await queueTransactionTracking(tx, { flush: false, syncFullRecord: false });
+    queued += 1;
+  }
+  if (opts?.flush !== false && queued > 0) void flushTrackingOutbox(true);
+  return queued;
+}
+
+/**
+ * Mirror existing jobs once after upgrading. Older jobs received a tracking
+ * token during the Dexie migration but were never queued for the public
+ * tracker, so their token links would stay empty until someone edited them.
+ */
+async function backfillTrackingOnce(): Promise<void> {
+  try {
+    const existing = await localDb.meta.get(TRACKING_BACKFILL_KEY);
+    if (existing?.value) return;
+
+    const queued = await queueAllTrackingRecords({ flush: false });
+
+    await localDb.meta.put({
+      key: TRACKING_BACKFILL_KEY,
+      value: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as any);
+
+    if (queued > 0) void flushTrackingOutbox(true);
+  } catch (error) {
+    console.warn('[tracking] backfill failed:', error);
   }
 }
 
@@ -399,5 +446,6 @@ export function startTrackingSync(): void {
   });
   window.setInterval(retry, 60_000);
 
+  void backfillTrackingOnce();
   void flushTrackingOutbox(true);
 }

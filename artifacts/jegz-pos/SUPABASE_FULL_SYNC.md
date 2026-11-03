@@ -112,6 +112,8 @@ Use incognito or clear site data after deploying so the PWA does not serve an ol
 | Symptom | Check |
 | --- | --- |
 | `Supabase is not configured` | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` were present at build time, then redeploy. |
+| `Supabase shop login failed: Invalid login credentials` | The dedicated Auth user does not exist, or the Vercel password does not match it. Create/reset it in **Authentication → Users** and enable **Auto Confirm User**. The Supabase dashboard login is not the same as an Auth user. |
+| `Email not confirmed` | Confirm the shop user in **Authentication → Users**, or recreate it with **Auto Confirm User** enabled. |
 | Pending changes never drop | Confirm the dedicated shop user is confirmed and can sign in. Open the Cloud sync card for the last error. |
 | `relation "public.products" does not exist` | Run [`supabase/full_sync.sql`](./supabase/full_sync.sql). |
 | `new row violates row-level security policy` | Run the full SQL, confirm you are using the authenticated shop account (not the anon key as a user). |

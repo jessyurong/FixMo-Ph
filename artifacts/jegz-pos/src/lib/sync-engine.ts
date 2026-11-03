@@ -19,7 +19,11 @@ import {
   type SyncTableName,
 } from './db-types';
 import { SUPABASE_SHOP_ID, isSupabaseConfigured } from './tracking-config';
-import { getAuthenticatedShopClient, supabaseErrorMessage } from './supabase-shop';
+import {
+  getAuthenticatedShopClient,
+  getShopAuthSnapshot,
+  supabaseErrorMessage,
+} from './supabase-shop';
 import { newSyncId } from './sync-id';
 
 const PAGE_SIZE = 500;
@@ -730,12 +734,12 @@ async function resolveOrphans(maps: RefMaps): Promise<void> {
 let pullPromise: Promise<void> | null = null;
 
 /** Pull all tables in dependency order. */
-export function pullAll(): Promise<void> {
+export function pullAll(forceAuth = false): Promise<void> {
   if (!isSupabaseConfigured()) return Promise.resolve();
   if (pullPromise) return pullPromise;
 
   pullPromise = (async () => {
-    const client = await getAuthenticatedShopClient();
+    const client = await getAuthenticatedShopClient(forceAuth);
 
     const lastPulled = await metaValue(LAST_PULLED_KEY);
     let since = EPOCH;
@@ -767,6 +771,7 @@ export function pullAll(): Promise<void> {
 let flushPromise: Promise<void> | null = null;
 let flushAgain = false;
 let lastFlushAt = 0;
+let lastSyncError = '';
 
 async function removeOutboxIfSame(entry: SyncOutboxEntry): Promise<void> {
   await localDb.transaction('rw', localDb.syncOutbox, async () => {
@@ -803,13 +808,15 @@ export function flushSyncOutbox(force = false): Promise<void> {
 
   flushPromise = (async () => {
     flushAgain = false;
+    let flushFailed = false;
     const entries = await localDb.syncOutbox.orderBy('updatedAt').toArray();
     if (entries.length === 0) return;
 
     let client: SupabaseClient;
     try {
-      client = await getAuthenticatedShopClient();
+      client = await getAuthenticatedShopClient(force);
     } catch (error) {
+      lastSyncError = supabaseErrorMessage(error);
       console.warn('[sync] shop authentication failed; changes remain queued.', error);
       return;
     }
@@ -836,6 +843,8 @@ export function flushSyncOutbox(force = false): Promise<void> {
           if (error) throw error;
           remoteRows = (data || []) as Array<Record<string, unknown>>;
         } catch (error) {
+          flushFailed = true;
+          lastSyncError = supabaseErrorMessage(error);
           for (const entry of chunk) await markOutboxFailure(entry, error);
           console.warn(`[sync] could not check ${cloudTable}; changes remain queued.`, supabaseErrorMessage(error));
           continue;
@@ -869,6 +878,8 @@ export function flushSyncOutbox(force = false): Promise<void> {
             .upsert(upload.map((entry) => entry.payload), { onConflict: 'sync_id' });
 
           if (error) {
+            flushFailed = true;
+            lastSyncError = supabaseErrorMessage(error);
             for (const entry of upload) await markOutboxFailure(entry, error);
             console.warn(`[sync] upsert ${cloudTable} failed; changes remain queued.`, error.message);
             continue;
@@ -876,12 +887,15 @@ export function flushSyncOutbox(force = false): Promise<void> {
 
           for (const entry of upload) await removeOutboxIfSame(entry);
         } catch (error) {
+          flushFailed = true;
+          lastSyncError = supabaseErrorMessage(error);
           for (const entry of upload) await markOutboxFailure(entry, error);
           console.warn(`[sync] upsert ${cloudTable} failed; changes remain queued.`, error);
         }
       }
     }
 
+    if (!flushFailed) lastSyncError = '';
     await setMeta(LAST_SYNC_KEY, nowISO());
   })()
     .catch((error) => {
@@ -1084,7 +1098,7 @@ let syncStarted = false;
 let syncPromise: Promise<void> | null = null;
 let syncAgain = false;
 
-async function runSync(): Promise<void> {
+async function runSync(forceAuth = false): Promise<void> {
   if (!isSupabaseConfigured()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   if (syncPromise) {
@@ -1093,6 +1107,8 @@ async function runSync(): Promise<void> {
   }
 
   syncPromise = (async () => {
+    let passError = '';
+    lastSyncError = '';
     try {
       await getDeviceId();
       const needsInitial = await metaValue(NEEDS_INITIAL_UPLOAD_KEY);
@@ -1100,18 +1116,21 @@ async function runSync(): Promise<void> {
         await queueAllLocalRecords();
       }
       await flushSyncOutbox(true);
-      await pullAll();
+      passError = lastSyncError;
+      await pullAll(forceAuth);
       await setMeta(LAST_SYNC_KEY, nowISO());
     } catch (error) {
+      passError = supabaseErrorMessage(error);
       console.warn('[sync] sync pass failed:', error);
     }
+    lastSyncError = passError;
   })();
 
   await syncPromise;
   syncPromise = null;
   if (syncAgain) {
     syncAgain = false;
-    void runSync();
+    void runSync(forceAuth);
   }
 }
 
@@ -1137,27 +1156,50 @@ export function startFullSync(): void {
 }
 
 /** Manual sync trigger for a settings button / diagnostics. */
-export function syncNow(): Promise<void> {
-  return runSync();
+export async function syncNow(): Promise<void> {
+  await runSync(true);
+  try {
+    // Loaded lazily because tracking-mirror already imports this module.
+    const { flushTrackingOutbox } = await import('./tracking-mirror');
+    await flushTrackingOutbox(true);
+  } catch (error) {
+    console.warn('[sync] tracking outbox flush failed:', error);
+  }
+
+  const trackingPending = await localDb.trackingOutbox.count();
+  if (lastSyncError) throw new Error(lastSyncError);
+  if (trackingPending > 0) {
+    throw new Error(`${trackingPending} tracking update(s) are still queued.`);
+  }
 }
 
 export async function getSyncStatus(): Promise<{
   configured: boolean;
   online: boolean;
   pending: number;
+  trackingPending: number;
+  hasShopCredentials: boolean;
+  authError: string | null;
+  authCheckedAt: string | null;
   lastSyncedAt: string | null;
   lastError: string | null;
 }> {
-  const [pending, lastSyncedAt, lastErrorRow] = await Promise.all([
+  const [pending, trackingPending, lastSyncedAt, lastErrorRow] = await Promise.all([
     localDb.syncOutbox.count(),
+    localDb.trackingOutbox.count(),
     metaValue(LAST_SYNC_KEY),
     localDb.syncOutbox.orderBy('updatedAt').reverse().first(),
   ]);
+  const auth = getShopAuthSnapshot();
   return {
     configured: isSupabaseConfigured(),
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     pending,
+    trackingPending,
+    hasShopCredentials: auth.hasCredentials,
+    authError: auth.lastError,
+    authCheckedAt: auth.lastFailureAt || auth.lastSuccessAt,
     lastSyncedAt: typeof lastSyncedAt === 'string' ? lastSyncedAt : null,
-    lastError: lastErrorRow?.lastError || null,
+    lastError: lastErrorRow?.lastError || lastSyncError || null,
   };
 }

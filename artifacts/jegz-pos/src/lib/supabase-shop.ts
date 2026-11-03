@@ -19,6 +19,7 @@ const AUTH_FAILURE_BACKOFF_MS = 30_000;
 
 let shopClient: SupabaseClient | null = null;
 let lastAuthFailureAt = 0;
+let lastAuthSuccessAt = 0;
 let lastAuthError = '';
 
 function getShopClient(): SupabaseClient {
@@ -36,12 +37,12 @@ function getShopClient(): SupabaseClient {
 }
 
 /** Use the persisted shop session, or sign in with the dedicated shop account. */
-export async function getAuthenticatedShopClient(): Promise<SupabaseClient> {
+export async function getAuthenticatedShopClient(force = false): Promise<SupabaseClient> {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase is not configured');
   }
 
-  if (lastAuthFailureAt && Date.now() - lastAuthFailureAt < AUTH_FAILURE_BACKOFF_MS) {
+  if (!force && lastAuthFailureAt && Date.now() - lastAuthFailureAt < AUTH_FAILURE_BACKOFF_MS) {
     throw new Error(lastAuthError || 'Shop authentication is temporarily paused');
   }
 
@@ -52,7 +53,10 @@ export async function getAuthenticatedShopClient(): Promise<SupabaseClient> {
     lastAuthError = error.message;
     throw error;
   }
-  if (data.session) return client;
+  if (data.session) {
+    lastAuthSuccessAt = Date.now();
+    return client;
+  }
 
   if (!hasShopSyncCredentials()) {
     throw new Error('Missing VITE_SUPABASE_SHOP_EMAIL / VITE_SUPABASE_SHOP_PASSWORD');
@@ -69,8 +73,28 @@ export async function getAuthenticatedShopClient(): Promise<SupabaseClient> {
   }
 
   lastAuthFailureAt = 0;
+  lastAuthSuccessAt = Date.now();
   lastAuthError = '';
   return client;
+}
+
+export interface ShopAuthSnapshot {
+  configured: boolean;
+  hasCredentials: boolean;
+  lastError: string | null;
+  lastFailureAt: string | null;
+  lastSuccessAt: string | null;
+}
+
+/** Last known shop-login state for the Settings diagnostics card. */
+export function getShopAuthSnapshot(): ShopAuthSnapshot {
+  return {
+    configured: isSupabaseConfigured(),
+    hasCredentials: hasShopSyncCredentials(),
+    lastError: lastAuthError || null,
+    lastFailureAt: lastAuthFailureAt ? new Date(lastAuthFailureAt).toISOString() : null,
+    lastSuccessAt: lastAuthSuccessAt ? new Date(lastAuthSuccessAt).toISOString() : null,
+  };
 }
 
 export function supabaseErrorMessage(error: unknown): string {

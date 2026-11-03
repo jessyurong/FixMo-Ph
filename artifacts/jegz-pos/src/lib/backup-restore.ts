@@ -24,6 +24,7 @@ import { localDb, LOCAL_TABLES } from './local-db';
 import { normalizeStatus, paymentStatusFor, ensureJobNumbers, normalizeServiceCatalog } from './offline-data-services';
 import { writeFileToStorageFolder } from './storage-folder';
 import { queueAllLocalRecords, queueDeletedRows } from './sync-engine';
+import { queueAllTrackingRecords } from './tracking-mirror';
 
 export const BACKUP_VERSION = '2.1.0';
 
@@ -830,6 +831,8 @@ export async function importBackup(
     // Imported rows are new local changes; push them and let last-write-wins
     // reconcile anything that was also edited on another device.
     await queueAllLocalRecords();
+    // Restored jobs also need a customer-safe tracking row.
+    await queueAllTrackingRecords();
 
     result.success = true;
     result.message = mergeMode
