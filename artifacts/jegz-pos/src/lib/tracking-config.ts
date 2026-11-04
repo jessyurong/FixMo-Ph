@@ -18,6 +18,14 @@ export const SUPABASE_SHOP_PASSWORD = String(env.VITE_SUPABASE_SHOP_PASSWORD || 
 export const SUPABASE_SHOP_ID = String(env.VITE_SUPABASE_SHOP_ID || 'fixmo-ph').trim() || 'fixmo-ph';
 export const PUBLIC_TRACKING_URL = trimTrailingSlash(String(env.VITE_PUBLIC_URL || '').trim());
 
+/**
+ * Optional public shop details baked into the customer tracking build. These
+ * are used when the visitor's device has no local shop profile (which is the
+ * normal case for a customer scanning a printed QR code).
+ */
+export const PUBLIC_SHOP_CONTACT = String(env.VITE_PUBLIC_SHOP_CONTACT || '').trim();
+export const PUBLIC_SHOP_ADDRESS = String(env.VITE_PUBLIC_SHOP_ADDRESS || '').trim();
+
 /** Can the app read from / subscribe to the public mirror? */
 export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
