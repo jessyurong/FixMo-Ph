@@ -9,16 +9,16 @@ export default defineConfig({
     react(), tailwindcss(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.svg'],
+      includeAssets: ['favicon.ico', 'favicon.svg', 'favicon-16.png', 'favicon-32.png', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'],
       manifest: {
         name: 'FixMo PH', short_name: 'FixMo PH',
         description: 'Offline-first mobile repair point of sale system',
-        display: 'standalone', start_url: '/', scope: '/', theme_color: '#FF3C00', background_color: '#ffffff',
+        display: 'standalone', start_url: '/', scope: '/', theme_color: '#FD7401', background_color: '#ffffff',
         icons: [
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' }
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
         ],
         categories: ['business', 'shopping', 'productivity']
       },
