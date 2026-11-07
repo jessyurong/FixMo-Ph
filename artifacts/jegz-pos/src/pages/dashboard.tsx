@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   useGetDashboard,
-  useShopProfile,
   DEFAULT_REORDER_POINT,
 } from "@/lib/offline-api";
 import { formatCurrency } from "@/lib/utils";
@@ -38,6 +37,8 @@ import {
   Area,
   BarChart,
   Bar,
+  ComposedChart,
+  Line,
   PieChart,
   Pie,
   Cell,
@@ -93,9 +94,123 @@ function ChartTooltip({
   );
 }
 
+type TrendPoint = { date: string; sales: number; profit: number };
+
+type CandlePoint = TrendPoint & {
+  open: number;
+  close: number;
+  high: number;
+  low: number;
+  wick: [number, number];
+};
+
+function toCandles(rows: TrendPoint[]): CandlePoint[] {
+  return rows.map((point, index) => {
+    const sales = Number(point.sales) || 0;
+    const profit = Number(point.profit) || 0;
+    const open = index > 0 ? Number(rows[index - 1].sales) || 0 : sales;
+    return {
+      date: point.date,
+      sales,
+      profit,
+      open,
+      close: sales,
+      high: Math.max(open, sales),
+      low: Math.min(open, sales),
+      wick: [Math.min(open, sales), Math.max(open, sales)],
+    };
+  });
+}
+
+function candleDomain(rows: CandlePoint[]): [number, number] {
+  if (!rows.length) return [0, 1];
+  const values = rows.flatMap((row) => [row.low, row.high, row.profit]);
+  let min = Math.min(0, ...values);
+  let max = Math.max(0, ...values);
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const pad = (max - min) * 0.12;
+  return [min === 0 ? 0 : min - pad, max + pad];
+}
+
+function CandleShape(props: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  payload?: CandlePoint;
+}) {
+  const { x = 0, y = 0, width = 0, height = 0, payload } = props;
+  if (!payload) return null;
+  const up = payload.close >= payload.open;
+  const color = up ? "#22c55e" : "#ef4444";
+  const bodyWidth = Math.max(width - 4, 4);
+  const bodyX = x + (width - bodyWidth) / 2;
+  const center = x + width / 2;
+
+  if (height < 1) {
+    return (
+      <line
+        x1={bodyX}
+        x2={bodyX + bodyWidth}
+        y1={y}
+        y2={y}
+        stroke={color}
+        strokeWidth={2}
+      />
+    );
+  }
+
+  const span = payload.high - payload.low || 1;
+  const yFor = (value: number) => y + ((payload.high - value) / span) * height;
+  const openY = yFor(payload.open);
+  const closeY = yFor(payload.close);
+  const bodyTop = Math.min(openY, closeY);
+  const bodyHeight = Math.max(Math.abs(closeY - openY), 1.5);
+
+  return (
+    <g>
+      <line x1={center} x2={center} y1={y} y2={y + height} stroke={color} strokeWidth={1.25} />
+      <rect x={bodyX} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={color} rx={1} />
+    </g>
+  );
+}
+
+function TradingTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: CandlePoint }>;
+  label?: string;
+}) {
+  const row = payload?.[0]?.payload;
+  if (!active || !row) return null;
+  const change = row.close - row.open;
+  const up = change >= 0;
+
+  return (
+    <div className="rounded-md border border-slate-700 bg-[#0b1220] px-3 py-2 font-mono text-[11px] leading-5 text-slate-100 shadow-xl">
+      <p className="mb-1 text-slate-400">{label}</p>
+      <p>O {formatCurrency(row.open)}</p>
+      <p>H {formatCurrency(row.high)}</p>
+      <p>L {formatCurrency(row.low)}</p>
+      <p>C {formatCurrency(row.close)}</p>
+      <p style={{ color: up ? "#4ade80" : "#f87171" }}>
+        {up ? "+" : "−"}
+        {formatCurrency(Math.abs(change))}
+      </p>
+      <p className="text-amber-300">Profit {formatCurrency(row.profit)}</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("today");
-  const shopProfile = useShopProfile();
+  const [trendView, setTrendView] = useState<"original" | "trading">("original");
 
   const {
     data: rawDashboard,
@@ -202,12 +317,6 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight text-primary">
             Dashboard
           </h1>
-          {(shopProfile.name || shopProfile.address) && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {shopProfile.name}
-              {shopProfile.address ? ` · ${shopProfile.address}` : ""}
-            </p>
-          )}
         </div>
 
         <Tabs
@@ -450,13 +559,92 @@ export default function Dashboard() {
 
       {/* SALES TREND */}
       <Card className="bg-card">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle className="text-base">
             {trendLabel} — Sales & Profit
           </CardTitle>
+          <div className="flex rounded-lg border border-border p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setTrendView("original")}
+              className={
+                trendView === "original"
+                  ? "rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground"
+                  : "rounded-md px-2.5 py-1 text-muted-foreground hover:text-foreground"
+              }
+            >
+              Original
+            </button>
+            <button
+              type="button"
+              onClick={() => setTrendView("trading")}
+              className={
+                trendView === "trading"
+                  ? "rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground"
+                  : "rounded-md px-2.5 py-1 text-muted-foreground hover:text-foreground"
+              }
+            >
+              Trading
+            </button>
+          </div>
         </CardHeader>
 
         <CardContent>
+          {trendView === "trading" ? (
+            <div className="rounded-xl bg-[#0c1220] px-2 py-3">
+              <ResponsiveContainer width="100%" height={260}>
+                <ComposedChart
+                  data={toCandles(dashboard.salesTrend)}
+                  margin={{ top: 8, right: 8, left: 4, bottom: 0 }}
+                >
+                  <CartesianGrid stroke="#1e293b" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fill: "#94a3b8", fontSize: 11 }}
+                    axisLine={{ stroke: "#1e293b" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    domain={candleDomain(toCandles(dashboard.salesTrend))}
+                    tick={{ fill: "#94a3b8", fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={52}
+                    tickFormatter={(v) =>
+                      `₱${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}`
+                    }
+                  />
+                  <Tooltip
+                    content={<TradingTooltip />}
+                    cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                    formatter={(value) => (
+                      <span style={{ color: "#94a3b8" }}>{value}</span>
+                    )}
+                  />
+                  <Bar
+                    dataKey="wick"
+                    name="Sales"
+                    fill="#22c55e"
+                    maxBarSize={18}
+                    isAnimationActive={false}
+                    shape={<CandleShape />}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="profit"
+                    name="Profit"
+                    stroke="#f59e0b"
+                    strokeWidth={1.5}
+                    dot={false}
+                    activeDot={{ r: 3, fill: "#f59e0b" }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
           <ResponsiveContainer
             width="100%"
             height={240}
@@ -593,6 +781,7 @@ export default function Dashboard() {
               />
             </AreaChart>
           </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
