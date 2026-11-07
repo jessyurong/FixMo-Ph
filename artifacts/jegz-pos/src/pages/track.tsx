@@ -1,33 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useParams, useSearchParams } from "wouter";
 import {
-  Activity,
-  ArrowRight,
-  BadgeCheck,
-  BellRing,
-  CalendarClock,
+  Bell,
   Check,
   ChevronDown,
-  ChevronRight,
   ClipboardList,
-  Clock3,
-  Hash,
-  Inbox,
-  Info,
   MapPin,
-  MessageSquareText,
-  Navigation,
   Package,
-  PackageSearch,
   Phone,
   RefreshCw,
-  SearchX,
+  Search,
   ShieldCheck,
-  Smartphone,
-  Stethoscope,
-  UserRound,
   Wrench,
-  XCircle,
   type LucideIcon,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -124,15 +108,14 @@ const STAGES: Array<{
   label: string;
   hint: string;
   estimate: string;
-  icon: LucideIcon;
 }> = [
-  { key: "received", label: "Received", hint: "Device checked in at the shop", estimate: "Check-in usually takes 5 minutes", icon: Inbox },
-  { key: "diagnosing", label: "Diagnosing", hint: "We are inspecting the issue", estimate: "Diagnosing usually takes 30 minutes", icon: Stethoscope },
-  { key: "waiting_for_parts", label: "Waiting for Parts", hint: "Sourcing the needed components", estimate: "Parts sourcing usually takes 1–3 days", icon: PackageSearch },
-  { key: "in_repair", label: "In Repair", hint: "A technician is working on it", estimate: "Repair usually takes 1–2 hours", icon: Wrench },
-  { key: "quality_check", label: "Quality Check", hint: "Final testing before release", estimate: "Quality check usually takes 20 minutes", icon: ShieldCheck },
-  { key: "ready", label: "Ready for Pickup", hint: "Your device is ready — come on by!", estimate: "Ready for pickup — no waiting needed", icon: BellRing },
-  { key: "completed", label: "Completed", hint: "Job finished. Thank you!", estimate: "Job completed — thank you!", icon: BadgeCheck },
+  { key: "received", label: "Received", hint: "Device checked in at the shop", estimate: "Check-in usually takes 5 minutes" },
+  { key: "diagnosing", label: "Diagnosing", hint: "We are inspecting the issue", estimate: "Diagnosing usually takes 30 minutes" },
+  { key: "waiting_for_parts", label: "Waiting for parts", hint: "Sourcing the needed components", estimate: "Parts sourcing usually takes 1–3 days" },
+  { key: "in_repair", label: "In repair", hint: "A technician is working on it", estimate: "Repair usually takes 1–2 hours" },
+  { key: "quality_check", label: "Quality check", hint: "Final testing before release", estimate: "Quality check usually takes 20 minutes" },
+  { key: "ready", label: "Ready for pickup", hint: "Your device is ready. You can pick it up.", estimate: "Ready for pickup" },
+  { key: "completed", label: "Completed", hint: "Job finished. Thank you.", estimate: "Job completed" },
 ];
 
 /**
@@ -148,99 +131,6 @@ const STATUS_STAGE: Record<string, number> = {
   ready_for_pickup: 5,
   completed: 6,
 };
-
-type Tone = {
-  text: string;
-  bg: string;
-  soft: string;
-  border: string;
-  ring: string;
-  gradient: string;
-  shadow: string;
-};
-
-const TONES: Record<string, Tone> = {
-  amber: {
-    text: "text-amber-500",
-    bg: "bg-amber-500",
-    soft: "bg-amber-500/10",
-    border: "border-amber-500/30",
-    ring: "ring-amber-500/25",
-    gradient: "from-amber-500 to-orange-500",
-    shadow: "shadow-amber-500/30",
-  },
-  violet: {
-    text: "text-violet-500",
-    bg: "bg-violet-500",
-    soft: "bg-violet-500/10",
-    border: "border-violet-500/30",
-    ring: "ring-violet-500/25",
-    gradient: "from-violet-500 to-purple-600",
-    shadow: "shadow-violet-500/30",
-  },
-  blue: {
-    text: "text-blue-500",
-    bg: "bg-blue-500",
-    soft: "bg-blue-500/10",
-    border: "border-blue-500/30",
-    ring: "ring-blue-500/25",
-    gradient: "from-blue-500 to-cyan-500",
-    shadow: "shadow-blue-500/30",
-  },
-  emerald: {
-    text: "text-emerald-500",
-    bg: "bg-emerald-500",
-    soft: "bg-emerald-500/10",
-    border: "border-emerald-500/30",
-    ring: "ring-emerald-500/25",
-    gradient: "from-emerald-500 to-green-600",
-    shadow: "shadow-emerald-500/30",
-  },
-  cyan: {
-    text: "text-cyan-500",
-    bg: "bg-cyan-600",
-    soft: "bg-cyan-500/10",
-    border: "border-cyan-500/30",
-    ring: "ring-cyan-500/25",
-    gradient: "from-cyan-500 to-blue-600",
-    shadow: "shadow-cyan-500/30",
-  },
-  slate: {
-    text: "text-slate-400",
-    bg: "bg-slate-500",
-    soft: "bg-slate-500/10",
-    border: "border-slate-500/30",
-    ring: "ring-slate-500/25",
-    gradient: "from-slate-500 to-slate-600",
-    shadow: "shadow-slate-500/30",
-  },
-  red: {
-    text: "text-red-500",
-    bg: "bg-red-500",
-    soft: "bg-red-500/10",
-    border: "border-red-500/30",
-    ring: "ring-red-500/25",
-    gradient: "from-red-500 to-rose-600",
-    shadow: "shadow-red-500/30",
-  },
-};
-
-function repairToneFor(status: RepairStatus): Tone {
-  switch (status) {
-    case "diagnosing":
-      return TONES.blue;
-    case "waiting_for_parts":
-      return TONES.violet;
-    case "in_repair":
-      return TONES.amber;
-    case "quality_check":
-      return TONES.cyan;
-    case "ready_for_pickup":
-      return TONES.emerald;
-    default:
-      return TONES.slate;
-  }
-}
 
 // ─── Data loading ────────────────────────────────────────────────────────────
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -515,21 +405,6 @@ function useTrackedJob(ticket: string) {
 }
 
 // ─── Small presentational pieces ─────────────────────────────────────────────
-const MILESTONES: Array<{ label: string; icon: LucideIcon; from: number }> = [
-  { label: "Received", icon: Inbox, from: 0 },
-  { label: "Diagnosis", icon: Stethoscope, from: 1 },
-  { label: "Parts", icon: PackageSearch, from: 2 },
-  { label: "Repair", icon: Wrench, from: 3 },
-  { label: "Ready", icon: BellRing, from: 5 },
-];
-
-function milestoneForStage(stageIndex: number): number {
-  for (let index = MILESTONES.length - 1; index >= 0; index -= 1) {
-    if (stageIndex >= MILESTONES[index].from) return index;
-  }
-  return 0;
-}
-
 function formatShortDate(value?: string): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -541,237 +416,59 @@ function formatShortDate(value?: string): string {
   });
 }
 
-function ShopLogo({ logo, name }: { logo?: string; name: string }) {
+const STAGE_ICON: Record<string, LucideIcon> = {
+  received: ClipboardList,
+  diagnosing: Search,
+  waiting_for_parts: Package,
+  in_repair: Wrench,
+  quality_check: ShieldCheck,
+  ready: Bell,
+  completed: Check,
+};
+
+function useBarFill(target: number) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setValue(target));
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+  return value;
+}
+
+function ShopMark({ logo, name }: { logo?: string; name: string }) {
   if (logo) {
     return (
       <img
         src={logo}
         alt={`${name} logo`}
-        className="h-10 w-10 shrink-0 rounded-xl border border-white/30 bg-white object-cover shadow-md shadow-orange-950/20"
+        className="h-10 w-10 shrink-0 rounded-xl border border-white/40 bg-white object-cover shadow-sm"
       />
     );
   }
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/30 bg-white/15 shadow-md shadow-orange-950/20 backdrop-blur-sm">
-      <Wrench className="h-5 w-5" />
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-white/30">
+      <Wrench className="h-5 w-5" aria-hidden />
     </div>
   );
 }
 
-function ProgressRing({
-  progress,
-  tone,
-  cancelled,
-  complete,
-}: {
-  progress: number;
-  tone: Tone;
-  cancelled: boolean;
-  complete: boolean;
-}) {
-  const size = 92;
-  const stroke = 7;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const value = Math.max(0, Math.min(100, progress));
-  const offset = circumference - (value / 100) * circumference;
-
+function TrackSkeleton() {
   return (
-    <div
-      className="relative h-24 w-24 shrink-0"
-      role="img"
-      aria-label={cancelled ? "Repair cancelled" : `${value}% complete`}
-    >
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90" aria-hidden="true">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          className="text-muted-foreground/15"
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className={cn(
-            "transition-[stroke-dashoffset] duration-700 ease-out",
-            cancelled ? TONES.red.text : complete ? "text-emerald-500" : tone.text,
-          )}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        {cancelled ? (
-          <XCircle className="h-7 w-7 text-red-500" />
-        ) : complete ? (
-          <BadgeCheck className="h-7 w-7 text-emerald-500" />
-        ) : (
-          <span className={cn("text-[26px] font-black leading-none tabular-nums", tone.text)}>
-            {value}
-            <span className="text-xs font-extrabold">%</span>
-          </span>
-        )}
-        <span className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-          {cancelled ? "Cancelled" : "Complete"}
-        </span>
+    <div className="mt-2 space-y-3" role="status" aria-live="polite">
+      <div className="rise rounded-2xl bg-white p-4 shadow-sm">
+        <div className="h-3 w-24 animate-pulse rounded-full bg-orange-100" />
+        <div className="mt-3 h-7 w-36 animate-pulse rounded-lg bg-stone-200" />
+        <div className="mt-4 h-2 animate-pulse rounded-full bg-stone-100" />
       </div>
-    </div>
-  );
-}
-
-function MilestoneRail({
-  stageIndex,
-  isCancelled,
-  isDone,
-  tone,
-}: {
-  stageIndex: number;
-  isCancelled: boolean;
-  isDone: boolean;
-  tone: Tone;
-}) {
-  const current = isCancelled ? -1 : isDone ? MILESTONES.length - 1 : milestoneForStage(stageIndex);
-
-  return (
-    <ol className="mt-4 flex items-start" aria-label="Repair journey">
-      {MILESTONES.map((milestone, index) => {
-        const Icon = milestone.icon;
-        const done = !isCancelled && (index < current || (isDone && index === current));
-        const active = !isCancelled && !isDone && index === current;
-
-        return (
-          <li
-            key={milestone.label}
-            className="relative flex min-w-0 flex-1 flex-col items-center text-center"
-            aria-current={active ? "step" : undefined}
-          >
-            {index < MILESTONES.length - 1 && (
-              <span
-                aria-hidden
-                className={cn(
-                  "absolute left-1/2 top-4 h-0.5 w-full -translate-y-1/2",
-                  done ? "bg-emerald-500/60" : "bg-border",
-                )}
-              />
-            )}
-            <span
-              className={cn(
-                "relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all duration-300",
-                active
-                  ? cn("scale-110 border-transparent text-white shadow-lg", tone.bg, tone.shadow)
-                  : done
-                    ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-500"
-                    : "border-border bg-card text-muted-foreground/70",
-              )}
-            >
-              {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-            </span>
-            <span
-              className={cn(
-                "mt-2 px-0.5 text-[9px] font-bold leading-tight min-[360px]:text-[10px]",
-                active ? tone.text : done ? "text-foreground" : "text-muted-foreground/70",
-              )}
-            >
-              {milestone.label}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function DetailItem({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-2.5">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground">
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0">
-        <dt className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-          {label}
-        </dt>
-        <dd className="mt-0.5 break-words text-[13px] font-semibold leading-snug">{value}</dd>
-      </div>
-    </div>
-  );
-}
-
-function NoteBlock({
-  icon: Icon,
-  label,
-  text,
-}: {
-  icon: LucideIcon;
-  label: string;
-  text: string;
-}) {
-  return (
-    <div className="flex items-start gap-2.5">
-      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-          {label}
-        </p>
-        <p className="mt-0.5 break-words text-[13px] leading-relaxed">{text}</p>
-      </div>
-    </div>
-  );
-}
-
-function TrackSkeleton({ ticket }: { ticket: string }) {
-  return (
-    <div className="mt-4 space-y-3.5" role="status" aria-live="polite">
-      <div className="rounded-[1.75rem] border border-border/70 bg-card p-4 shadow-sm sm:p-5">
-        <div className="flex items-center gap-4">
-          <div className="h-24 w-24 shrink-0 animate-pulse rounded-full bg-muted" />
-          <div className="min-w-0 flex-1 space-y-2.5">
-            <div className="h-3 w-20 animate-pulse rounded-full bg-muted" />
-            <div className="h-6 w-32 animate-pulse rounded-lg bg-muted" />
-            <div className="h-3 w-full animate-pulse rounded-full bg-muted" />
-            <div className="h-6 w-28 animate-pulse rounded-full bg-muted" />
+      <div className="rise space-y-3 rounded-2xl bg-white p-4 shadow-sm" style={{ animationDelay: "80ms" }}>
+        {[0, 1, 2, 3, 4].map((item) => (
+          <div key={item} className="flex items-center gap-3">
+            <div className="h-8 w-8 animate-pulse rounded-full bg-stone-100" />
+            <div className="h-3 w-28 animate-pulse rounded-full bg-stone-100" />
           </div>
-        </div>
+        ))}
       </div>
-      <div className="space-y-4 rounded-[1.5rem] border border-border/70 bg-card p-4 shadow-sm">
-        <div className="h-3 w-28 animate-pulse rounded-full bg-muted" />
-        <div className="flex items-center justify-between gap-2 px-1">
-          {[0, 1, 2, 3, 4].map((item) => (
-            <div key={item} className="flex flex-1 flex-col items-center gap-2">
-              <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />
-              <div className="h-2 w-10 animate-pulse rounded-full bg-muted" />
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-3 rounded-[1.5rem] border border-border/70 bg-card p-4 shadow-sm">
-        <div className="h-3 w-24 animate-pulse rounded-full bg-muted" />
-        <div className="grid grid-cols-2 gap-3">
-          <div className="h-10 animate-pulse rounded-xl bg-muted" />
-          <div className="h-10 animate-pulse rounded-xl bg-muted" />
-        </div>
-      </div>
-      <p className="text-center text-[11px] font-medium text-muted-foreground">
-        Checking {ticket ? `ticket ${ticket}` : "your repair"}…
-      </p>
+      <p className="text-center text-sm text-stone-500">Checking your repair…</p>
     </div>
   );
 }
@@ -787,41 +484,137 @@ function TicketLookup({
 
   return (
     <form
-      className="mt-4"
+      className="mt-5"
       onSubmit={(event) => {
         event.preventDefault();
         if (value.trim()) onSubmit(value.trim());
       }}
     >
-      <label
-        htmlFor="tracking-ticket"
-        className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground"
-      >
+      <label htmlFor="tracking-ticket" className="text-sm text-stone-600">
         Ticket number
       </label>
-      <div className="relative mt-1.5">
-        <Hash className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          id="tracking-ticket"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          inputMode="text"
-          autoCapitalize="characters"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="e.g. JEGZ-2026-000001"
-          aria-label="Ticket number"
-          className="h-12 w-full rounded-2xl border border-border bg-background/80 pl-10 pr-3 text-base font-semibold tracking-wide outline-none transition placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/25"
-        />
-      </div>
+      <input
+        id="tracking-ticket"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        inputMode="text"
+        autoCapitalize="characters"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="JEGZ-2026-000001"
+        aria-label="Ticket number"
+        className="mt-1.5 h-12 w-full rounded-xl border border-orange-200 bg-orange-50/40 px-3 text-base text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-500/15"
+      />
       <button
         type="submit"
-        className="mt-2.5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-600 to-amber-500 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="mt-3 h-12 w-full rounded-xl bg-orange-600 text-sm font-semibold text-white shadow-md shadow-orange-600/25 transition hover:bg-orange-700 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 focus-visible:ring-offset-2"
       >
-        Track my repair
-        <ArrowRight className="h-4 w-4" />
+        Check status
       </button>
     </form>
+  );
+}
+
+function StatusList({
+  stageIndex,
+  isCancelled,
+  isDone,
+}: {
+  stageIndex: number;
+  isCancelled: boolean;
+  isDone: boolean;
+}) {
+  return (
+    <ol aria-label="Repair status">
+      {STAGES.map((stage, index) => {
+        const done = !isCancelled && (index < stageIndex || isDone);
+        const active = !isCancelled && !isDone && index === stageIndex;
+        const last = index === STAGES.length - 1;
+        const Icon = STAGE_ICON[stage.key] ?? Check;
+
+        return (
+          <li
+            key={stage.key}
+            className="step-in flex gap-3"
+            style={{ animationDelay: `${120 + index * 70}ms` }}
+            aria-current={active ? "step" : undefined}
+          >
+            <div className="flex w-9 flex-col items-center">
+              <span className="relative flex h-9 w-9 items-center justify-center">
+                {active && (
+                  <span
+                    aria-hidden
+                    className="live-ping absolute inset-0 rounded-full bg-orange-400"
+                  />
+                )}
+                <span
+                  className={cn(
+                    "relative flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-500",
+                    active
+                      ? "bob bg-orange-600 text-white shadow-md shadow-orange-600/30"
+                      : done
+                        ? "bg-emerald-600 text-white"
+                        : "bg-stone-100 text-stone-400",
+                  )}
+                >
+                  {done ? (
+                    <Check className="pop h-4 w-4" style={{ animationDelay: `${180 + index * 70}ms` }} aria-hidden />
+                  ) : (
+                    <Icon className="h-4 w-4" aria-hidden />
+                  )}
+                </span>
+              </span>
+              {!last && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "line-grow my-1 w-0.5 flex-1 rounded-full",
+                    done ? "bg-emerald-500" : "bg-stone-200",
+                  )}
+                  style={{ minHeight: 18, animationDelay: `${160 + index * 70}ms` }}
+                />
+              )}
+            </div>
+            <div className={cn("min-w-0 flex-1", last ? "pb-0" : "pb-3")}>
+              <div
+                className={cn(
+                  "rounded-xl px-3 py-2 transition-colors duration-500",
+                  active ? "bg-orange-50" : "bg-transparent",
+                )}
+              >
+                <p
+                  className={cn(
+                    "text-sm leading-5",
+                    active
+                      ? "font-semibold text-stone-900"
+                      : done
+                        ? "font-medium text-stone-800"
+                        : "text-stone-400",
+                  )}
+                >
+                  {stage.label}
+                  {active && (
+                    <span className="ml-2 inline-flex items-center rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      Now
+                    </span>
+                  )}
+                </p>
+                {active && <p className="mt-0.5 text-sm text-stone-600">{stage.hint}</p>}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-2">
+      <dt className="shrink-0 text-sm text-stone-500">{label}</dt>
+      <dd className="min-w-0 text-right text-sm text-stone-900">{value}</dd>
+    </div>
   );
 }
 
@@ -866,11 +659,7 @@ export default function TrackPage() {
         : (STATUS_STAGE[normalizedStatus] ?? 0);
   const progress =
     stageIndex < 0 ? 0 : Math.round((stageIndex / (STAGES.length - 1)) * 100);
-  const tone = isCancelled
-    ? TONES.red
-    : isDone
-      ? TONES.emerald
-      : repairToneFor(job?.repairStatus ?? "received");
+  const filled = useBarFill(isCancelled ? 0 : progress);
   const currentStage = stageIndex >= 0 ? STAGES[stageIndex] : null;
   const nextStage =
     stageIndex >= 0 && stageIndex < STAGES.length - 1 ? STAGES[stageIndex + 1] : null;
@@ -886,467 +675,200 @@ export default function TrackPage() {
     : 0;
   const paymentLabel =
     remaining <= 0 ? "Paid" : (job?.amountPaid ?? 0) > 0 ? "Partially paid" : "Unpaid";
-  const paymentTone =
-    remaining <= 0
-      ? "bg-emerald-500/10 text-emerald-500"
-      : (job?.amountPaid ?? 0) > 0
-        ? "bg-amber-500/10 text-amber-500"
-        : "bg-red-500/10 text-red-500";
+
+  const statusTitle = isCancelled ? "Cancelled" : currentStage?.label ?? "Received";
+  const statusBody = isCancelled
+    ? "This repair was cancelled. Call the shop if you need the details."
+    : currentStage?.hint;
+
+  const ring = 2 * Math.PI * 8;
+  const ringOffset = ring - (Math.max(0, secondsLeft) / REFRESH_SECONDS) * ring;
 
   return (
-    <div className="relative min-h-dvh overflow-x-clip bg-background">
-      {/* Ambient brand glow */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 h-80 bg-gradient-to-b from-orange-500/10 via-orange-500/[0.03] to-transparent"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none fixed -left-24 top-28 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none fixed -right-28 top-1/3 h-72 w-72 rounded-full bg-orange-500/10 blur-3xl"
-      />
-
-      {/* Sticky shop header */}
-      <header className="sticky top-0 z-40 overflow-hidden border-b border-white/10 bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 text-white shadow-lg shadow-orange-950/15">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-white/15"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-12 left-1/3 h-24 w-24 rounded-full bg-black/10"
-        />
-        <div className="relative mx-auto flex w-full max-w-lg items-center gap-2.5 px-4 pb-2.5 pt-[calc(0.65rem+env(safe-area-inset-top))]">
-          <ShopLogo logo={shop.logo} name={displayShopName} />
+    <div className="repair-track min-h-dvh bg-[linear-gradient(180deg,#fff4e8_0%,#f6f1e8_240px,#f3eee6_100%)] text-stone-900">
+      <header className="sticky top-0 z-20 bg-orange-600 text-white shadow-md shadow-orange-900/10">
+        <div className="mx-auto flex w-full max-w-md items-center gap-3 px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+          <ShopMark logo={shop.logo} name={displayShopName} />
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/70">
-              Repair tracker
-            </p>
-            <h1 className="truncate text-[15px] font-extrabold leading-tight tracking-tight">
-              {displayShopName}
-            </h1>
+            <p className="text-xs text-orange-100">Repair status</p>
+            <h1 className="truncate text-base font-semibold">{displayShopName}</h1>
           </div>
           {ticket && (
             <button
               type="button"
               onClick={refresh}
               aria-label="Refresh repair status"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-inset ring-white/20 transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 transition hover:bg-white/25 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
             </button>
           )}
-          {state !== "ready" && contactHref && (
-            <a
-              href={contactHref}
-              aria-label={`Call ${displayShopName}`}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600 shadow-md shadow-orange-950/20 transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-            >
-              <Phone className="h-4 w-4" />
-            </a>
-          )}
+        </div>
+        <div className="h-0.5 bg-orange-800/30">
+          <div
+            className="h-full bg-white/80 transition-all duration-1000 ease-linear"
+            style={{ width: refreshing ? "100%" : `${(secondsLeft / REFRESH_SECONDS) * 100}%` }}
+          />
         </div>
       </header>
 
       <main
         className={cn(
-          "relative mx-auto w-full max-w-lg px-4 pt-4",
-          state === "ready"
-            ? "pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
+          "mx-auto w-full max-w-md px-4 pt-5",
+          state === "ready" && contactHref
+            ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))]"
             : "pb-[calc(2rem+env(safe-area-inset-bottom))]",
         )}
       >
-        {/* Loading */}
-        {state === "loading" && <TrackSkeleton ticket={ticket} />}
+        {state === "loading" && <TrackSkeleton />}
 
-        {/* Idle / not found */}
         {(state === "idle" || state === "notfound") && (
-          <section className="relative mt-1 overflow-hidden rounded-[1.75rem] border border-border/70 bg-gradient-to-br from-card via-card to-orange-500/5 p-4 shadow-xl shadow-black/5 sm:p-5">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full bg-orange-500/10 blur-3xl"
-            />
-            <div className="relative">
-              <div className="flex items-start gap-3">
-                <div
-                  className={cn(
-                    "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-inner",
-                    state === "notfound"
-                      ? "bg-red-500/10 text-red-500"
-                      : "bg-primary/10 text-primary",
-                  )}
-                >
-                  {state === "notfound" ? (
-                    <SearchX className="h-6 w-6" />
-                  ) : (
-                    <PackageSearch className="h-6 w-6" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
-                    {state === "notfound" ? "Ticket lookup" : "Track your repair"}
-                  </p>
-                  <h2 className="mt-1 text-xl font-black leading-tight tracking-tight">
-                    {state === "notfound" ? "We couldn't find that ticket" : "Where's my device?"}
-                  </h2>
-                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                    {state === "notfound"
-                      ? "Double-check the number printed on your job slip and try again, or call the shop and we'll help."
-                      : "Enter the ticket number from your job slip to see live repair updates."}
-                  </p>
-                </div>
-              </div>
-
-              <TicketLookup
-                key={ticket}
-                defaultValue={ticket}
-                onSubmit={updateTicket}
-              />
-
-              {state === "idle" ? (
-                <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
-                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  You'll find the ticket number below the QR code on your job slip.
-                </p>
-              ) : (
-                contactHref && (
-                  <a
-                    href={contactHref}
-                    className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-primary"
-                  >
-                    <Phone className="h-3.5 w-3.5" />
-                    Need help? Call {contactNumber}
-                  </a>
-                )
-              )}
-            </div>
+          <section className="rise rounded-2xl bg-white p-5 shadow-[0_10px_30px_rgba(120,60,10,0.08)]">
+            <h2 className="text-xl font-semibold tracking-tight">
+              {state === "notfound" ? "Ticket not found" : "Check a repair"}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone-600">
+              {state === "notfound"
+                ? "That number does not match a job on file. Check the ticket printed on your job slip, or call the shop."
+                : "Type the ticket number from your job slip. It is printed under the QR code."}
+            </p>
+            <TicketLookup key={ticket} defaultValue={ticket} onSubmit={updateTicket} />
+            {state === "notfound" && contactHref && (
+              <a href={contactHref} className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-orange-700">
+                <Phone className="h-4 w-4" aria-hidden />
+                Call {contactNumber}
+              </a>
+            )}
           </section>
         )}
 
-        {/* Job found */}
         {state === "ready" && job && (
-          <div className="mt-1 space-y-3.5">
-            {/* Status hero */}
-            <section
-              className={cn(
-                "relative overflow-hidden rounded-[1.75rem] border bg-card p-4 shadow-xl shadow-black/5 sm:p-5",
-                tone.border,
-              )}
-            >
-              <div
-                aria-hidden
-                className={cn(
-                  "absolute inset-x-0 top-0 h-1 bg-gradient-to-r",
-                  isCancelled ? TONES.red.gradient : tone.gradient,
-                )}
-              />
-              <div className="relative">
+          <article className="space-y-3">
+            <section className="rise overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_rgba(120,60,10,0.08)]">
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 px-4 py-4 text-white">
                 <div className="flex items-center justify-between gap-3">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em]",
-                      isCancelled
-                        ? "bg-red-500/10 text-red-500"
-                        : isDone
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : "bg-primary/10 text-primary",
-                    )}
-                  >
-                    {isCancelled ? (
-                      <XCircle className="h-3 w-3" />
-                    ) : isDone ? (
-                      <BadgeCheck className="h-3 w-3" />
-                    ) : (
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-70" />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
-                      </span>
-                    )}
-                    {isCancelled ? "Cancelled" : isDone ? "Completed" : "Live status"}
-                  </span>
-                  <span className="min-w-0 truncate font-mono text-[11px] font-bold text-muted-foreground">
-                    {job.jobNumber || `#${job.ticket}`}
+                  <p className="font-mono text-xs text-orange-100">{job.jobNumber || job.ticket}</p>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium">
+                    <span className="relative flex h-2 w-2">
+                      {!isCancelled && !isDone && (
+                        <span className="live-ping absolute inline-flex h-2 w-2 rounded-full bg-white" />
+                      )}
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+                    </span>
+                    {isCancelled ? "Cancelled" : isDone ? "Done" : "Live"}
                   </span>
                 </div>
-
-                <div className="mt-4 flex items-center gap-4">
-                  <ProgressRing
-                    progress={progress}
-                    tone={tone}
-                    cancelled={isCancelled}
-                    complete={isDone}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                      Current status
-                    </p>
-                    <h2
-                      className="mt-0.5 text-[22px] font-black leading-tight tracking-tight sm:text-2xl"
-                      aria-live="polite"
-                    >
-                      {isCancelled ? "Cancelled" : currentStage?.label ?? "Received"}
-                    </h2>
-                    <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
-                      {isCancelled
-                        ? "This repair job was cancelled. Contact the shop if you need help."
-                        : currentStage?.hint}
-                    </p>
-                    {!isCancelled && !isDone && (
-                      <span
-                        className={cn(
-                          "mt-2.5 inline-flex max-w-full items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[10px] font-semibold leading-snug",
-                          tone.soft,
-                          tone.text,
-                        )}
-                      >
-                        <Clock3 className="h-3 w-3 shrink-0" />
-                        {currentStage?.estimate}
-                      </span>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight" aria-live="polite">
+                  {statusTitle}
+                </h2>
+                <p className="mt-1 text-sm leading-relaxed text-orange-50">{statusBody}</p>
+              </div>
+              <div className="px-4 py-3">
+                <div className="relative h-2 overflow-hidden rounded-full bg-orange-100">
+                  <div
+                    className={cn(
+                      "relative h-full overflow-hidden rounded-full transition-[width] duration-700 ease-out",
+                      isCancelled ? "bg-red-500" : isDone ? "bg-emerald-500" : "bg-orange-500",
                     )}
+                    style={{ width: `${filled}%` }}
+                  >
+                    {!isCancelled && !isDone && <span className="bar-sheen" />}
                   </div>
                 </div>
-
-                <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3 text-[10px] font-medium text-muted-foreground">
-                  <span className="inline-flex min-w-0 items-center gap-1.5">
-                    <CalendarClock className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">Received {formatShortDate(job.createdAt)}</span>
+                <div className="mt-2 flex items-center justify-between gap-3 text-xs text-stone-500">
+                  <span>
+                    {isCancelled
+                      ? "This job will not continue"
+                      : `${progress}% · step ${Math.min(stageIndex + 1, STAGES.length)} of ${STAGES.length}`}
                   </span>
-                  <span
-                    className="inline-flex shrink-0 items-center gap-1.5"
-                    aria-live="polite"
-                  >
-                    <RefreshCw
-                      className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
-                    />
-                    {refreshing
-                      ? "Updating…"
-                      : updatedLabel
-                        ? `Updated ${updatedLabel}`
-                        : "Live"}
-                  </span>
+                  {updatedLabel && <span>Updated {updatedLabel}</span>}
                 </div>
-              </div>
-            </section>
-
-            {/* Journey */}
-            <section className="rounded-[1.5rem] border border-border/70 bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  Repair journey
-                </h2>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
-                  <Activity className="h-3.5 w-3.5 text-primary" />
-                  {isCancelled ? "Cancelled" : `${progress}% complete`}
-                </span>
-              </div>
-
-              <MilestoneRail
-                stageIndex={stageIndex}
-                isCancelled={isCancelled}
-                isDone={isDone}
-                tone={tone}
-              />
-
-              {readyForPickup && (
-                <div className="mt-3 flex items-start gap-2 rounded-2xl bg-emerald-500/10 px-3 py-2.5">
-                  <BellRing className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                  <p className="text-[11px] font-semibold leading-snug text-emerald-500">
-                    Your device is ready — drop by the shop to pick it up.
-                  </p>
-                </div>
-              )}
-
-              {!isCancelled && !isDone && !readyForPickup && nextStage && (
-                <div className="mt-3 flex items-start gap-2 rounded-2xl bg-muted/50 px-3 py-2.5">
-                  <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                  <p className="text-[11px] leading-snug text-muted-foreground">
-                    <span className="font-bold text-foreground">Up next:</span>{" "}
-                    {nextStage.label} — {nextStage.hint}
-                  </p>
-                </div>
-              )}
-
-              {isDone && !isCancelled && (
-                <p className="mt-3 rounded-2xl bg-emerald-500/10 px-3 py-2.5 text-center text-[11px] font-semibold text-emerald-500">
-                  All done — thank you for trusting us with your repair.
-                </p>
-              )}
-
-              {isCancelled && (
-                <p className="mt-3 rounded-2xl bg-red-500/10 px-3 py-2.5 text-center text-[11px] font-semibold text-red-500">
-                  This repair was cancelled. Call the shop for more details.
-                </p>
-              )}
-
-              <details className="group mt-3 border-t border-border/60 pt-3">
-                <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-xl py-1 text-[11px] font-bold text-primary outline-none transition focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                  View full timeline
-                  <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-open:rotate-180" />
-                </summary>
-                <ol className="mt-3">
-                  {STAGES.map((stage, index) => {
-                    const done = !isCancelled && (index < stageIndex || isDone);
-                    const active = !isCancelled && !isDone && index === stageIndex;
-                    const Icon = stage.icon;
-
-                    return (
-                      <li key={stage.key} className="relative flex gap-3 pb-3.5 last:pb-0">
-                        {index < STAGES.length - 1 && (
-                          <span
-                            aria-hidden
-                            className={cn(
-                              "absolute left-[13px] top-7 -bottom-0.5 w-0.5 rounded-full",
-                              done ? "bg-emerald-500/60" : "bg-border",
-                            )}
-                          />
-                        )}
-                        <span
-                          className={cn(
-                            "relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-300",
-                            active
-                              ? cn("border-transparent text-white shadow-md", tone.bg, tone.shadow)
-                              : done
-                                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-500"
-                                : "border-border bg-muted/40 text-muted-foreground/70",
-                          )}
-                        >
-                          {done ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
-                        </span>
-                        <div className="min-w-0 flex-1 pt-0.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <p
-                              className={cn(
-                                "text-xs font-bold leading-tight",
-                                active || done ? "text-foreground" : "text-muted-foreground/70",
-                              )}
-                            >
-                              {stage.label}
-                            </p>
-                            {active && (
-                              <span
-                                className={cn(
-                                  "rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white",
-                                  tone.bg,
-                                )}
-                              >
-                                Current
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                            {stage.hint}
-                          </p>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </details>
-            </section>
-
-            {/* Job details */}
-            <section className="rounded-[1.5rem] border border-border/70 bg-card p-4 shadow-sm">
-              <h2 className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                Job details
-              </h2>
-              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-3.5">
-                <DetailItem icon={UserRound} label="Customer" value={job.customerName} />
-                <DetailItem icon={Smartphone} label="Device" value={job.device} />
-                {!job.publicMirror && (
-                  <DetailItem icon={Wrench} label="Technician" value={job.technicianName} />
+                {!isCancelled && !isDone && currentStage && (
+                  <p className="mt-2 text-sm text-stone-700">{currentStage.estimate}</p>
                 )}
-                <DetailItem
-                  icon={CalendarClock}
-                  label="Received"
-                  value={formatShortDate(job.createdAt)}
-                />
+              </div>
+            </section>
+
+            {readyForPickup && (
+              <p className="rise rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-md shadow-emerald-700/20" style={{ animationDelay: "80ms" }}>
+                Your device is ready. Drop by the shop to pick it up.
+              </p>
+            )}
+            {isDone && !isCancelled && (
+              <p className="rise rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white" style={{ animationDelay: "80ms" }}>
+                Repair finished. Thank you.
+              </p>
+            )}
+            {isCancelled && (
+              <p className="rise rounded-2xl bg-red-600 px-4 py-3 text-sm font-medium text-white" style={{ animationDelay: "80ms" }}>
+                This repair was cancelled. Call the shop if you need the details.
+              </p>
+            )}
+
+            <section className="rise rounded-2xl bg-white p-4 shadow-[0_10px_30px_rgba(120,60,10,0.06)]" style={{ animationDelay: "120ms" }}>
+              <StatusList stageIndex={stageIndex} isCancelled={isCancelled} isDone={isDone} />
+              {!isCancelled && !isDone && !readyForPickup && nextStage && (
+                <p className="mt-3 rounded-xl bg-stone-50 px-3 py-2 text-sm text-stone-600">
+                  Next: <span className="font-medium text-stone-800">{nextStage.label}</span>. {nextStage.hint}
+                </p>
+              )}
+            </section>
+
+            <section className="rise rounded-2xl bg-white px-4 py-2 shadow-[0_10px_30px_rgba(120,60,10,0.06)]" style={{ animationDelay: "180ms" }}>
+              <h3 className="py-2 text-sm font-semibold">Job</h3>
+              <dl className="divide-y divide-stone-100">
+                <Row label="Customer" value={job.customerName} />
+                <Row label="Device" value={job.device} />
+                {!job.publicMirror && <Row label="Technician" value={job.technicianName} />}
+                <Row label="Received" value={formatShortDate(job.createdAt)} />
+                {job.completedAt && <Row label="Finished" value={formatShortDate(job.completedAt)} />}
               </dl>
             </section>
 
-            {/* Payment — hidden on the public mirror because it contains no prices. */}
             {!job.publicMirror && job.total > 0 && (
-              <section className="rounded-[1.5rem] border border-border/70 bg-card p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    Payment
-                  </h2>
+              <section className="rise rounded-2xl bg-white px-4 py-2 shadow-[0_10px_30px_rgba(120,60,10,0.06)]" style={{ animationDelay: "240ms" }}>
+                <div className="flex items-center justify-between py-2">
+                  <h3 className="text-sm font-semibold">Payment</h3>
                   <span
                     className={cn(
-                      "rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide",
-                      paymentTone,
+                      "rounded-full px-2 py-0.5 text-xs font-medium",
+                      remaining <= 0 ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700",
                     )}
                   >
                     {paymentLabel}
                   </span>
                 </div>
-
-                <div className="mt-3 flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                      Total
-                    </p>
-                    <p className="mt-0.5 text-2xl font-black tracking-tight">
-                      {formatCurrency(job.total)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                      {remaining > 0 ? "Balance due" : "Payment"}
-                    </p>
-                    <p
-                      className={cn(
-                        "mt-0.5 text-base font-extrabold",
-                        remaining > 0 ? "text-red-500" : "text-emerald-500",
-                      )}
-                    >
-                      {remaining > 0 ? formatCurrency(remaining) : "Fully paid"}
-                    </p>
-                  </div>
-                </div>
-
-                {(job.amountPaid ?? 0) > 0 && (
-                  <div className="mt-2 flex items-center justify-between rounded-xl bg-muted/50 px-3 py-2 text-[11px]">
-                    <span className="text-muted-foreground">Deposit paid</span>
-                    <span className="font-bold text-emerald-500">
-                      {formatCurrency(job.amountPaid ?? 0)}
-                    </span>
-                  </div>
-                )}
+                <dl className="divide-y divide-stone-100">
+                  <Row label="Total" value={formatCurrency(job.total)} />
+                  {(job.amountPaid ?? 0) > 0 && (
+                    <Row label="Paid" value={formatCurrency(job.amountPaid ?? 0)} />
+                  )}
+                  <Row
+                    label="Balance"
+                    value={remaining > 0 ? formatCurrency(remaining) : "None"}
+                  />
+                </dl>
 
                 {job.items.length > 0 && (
-                  <details className="group mt-2 border-t border-dashed border-border pt-2">
-                    <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-xl py-1.5 text-[11px] font-bold text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                      View services &amp; parts ({job.items.length})
-                      <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-open:rotate-180" />
+                  <details className="group mt-3">
+                    <summary className="flex cursor-pointer list-none items-center justify-between py-1 text-sm text-stone-700 [&::-webkit-details-marker]:hidden">
+                      Services and parts ({job.items.length})
+                      <ChevronDown className="h-4 w-4 text-stone-400 transition-transform group-open:rotate-180" />
                     </summary>
-                    <ul className="divide-y divide-border/50">
+                    <ul className="divide-y divide-stone-200 border-t border-stone-200">
                       {job.items.map((item, index) => (
-                        <li key={`${item.name}-${index}`} className="flex items-start gap-2.5 py-2.5">
-                          <span
-                            className={cn(
-                              "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                              item.type === "product"
-                                ? "bg-amber-500/10 text-amber-500"
-                                : "bg-blue-500/10 text-blue-500",
-                            )}
-                          >
-                            {item.type === "product" ? (
-                              <Package className="h-3.5 w-3.5" />
-                            ) : (
-                              <Wrench className="h-3.5 w-3.5" />
-                            )}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold leading-snug">{item.name}</p>
-                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        <li
+                          key={`${item.name}-${index}`}
+                          className="flex items-start justify-between gap-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm text-stone-900">{item.name}</p>
+                            <p className="text-xs text-stone-500">
                               {item.type === "product" ? "Part" : "Service"}
-                              {item.isPreOrder ? " · Pre-order" : ""} · x{item.quantity}
+                              {item.isPreOrder ? " · Pre-order" : ""} · ×{item.quantity}
                             </p>
                           </div>
-                          <p className="shrink-0 text-xs font-bold">
+                          <p className="shrink-0 text-sm tabular-nums">
                             {formatCurrency(item.price * item.quantity)}
                           </p>
                         </li>
@@ -1357,157 +879,102 @@ export default function TrackPage() {
               </section>
             )}
 
-            {/* Notes — also excluded from the public mirror. */}
             {!job.publicMirror && (job.complaint || job.diagnosis || job.notes) && (
-              <section className="rounded-[1.5rem] border border-border/70 bg-card p-4 shadow-sm">
-                <h2 className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  Repair notes
-                </h2>
-                <div className="mt-3 space-y-3">
+              <section className="rise rounded-2xl bg-white px-4 py-4 shadow-[0_10px_30px_rgba(120,60,10,0.06)]" style={{ animationDelay: "300ms" }}>
+                <h3 className="text-sm font-semibold">Notes</h3>
+                <div className="mt-3 space-y-3 text-sm">
                   {job.complaint && (
-                    <NoteBlock icon={ClipboardList} label="Reported issue" text={job.complaint} />
+                    <p>
+                      <span className="text-stone-500">Reported issue. </span>
+                      {job.complaint}
+                    </p>
                   )}
                   {job.diagnosis && (
-                    <NoteBlock icon={Stethoscope} label="Diagnosis" text={job.diagnosis} />
+                    <p>
+                      <span className="text-stone-500">Diagnosis. </span>
+                      {job.diagnosis}
+                    </p>
                   )}
                   {job.notes && (
-                    <NoteBlock icon={MessageSquareText} label="Technician notes" text={job.notes} />
+                    <p>
+                      <span className="text-stone-500">From the technician. </span>
+                      {job.notes}
+                    </p>
                   )}
                 </div>
               </section>
             )}
-          </div>
-        )}
 
-        {/* Contact shop — always available */}
-        {state !== "loading" && (
-          <section className="relative mt-3.5 overflow-hidden rounded-[1.5rem] border border-border/70 bg-gradient-to-br from-card via-card to-orange-500/5 p-4 shadow-sm">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -bottom-12 -right-10 h-32 w-32 rounded-full bg-orange-500/10 blur-3xl"
-            />
-            <div className="relative flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25">
-                <Phone className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold">Need a hand?</h2>
-                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                  Questions about your repair? The shop team is happy to help.
-                </p>
-              </div>
-            </div>
-
-            <div className="relative mt-3 grid gap-2">
+            <section className="rise rounded-2xl bg-white px-4 py-4 shadow-[0_10px_30px_rgba(120,60,10,0.06)]" style={{ animationDelay: "360ms" }}>
+              <h3 className="text-sm font-semibold">Shop</h3>
               {contactHref && (
-                <a
-                  href={contactHref}
-                  className="flex items-center gap-3 rounded-2xl border border-border/60 bg-background/70 px-3 py-2.5 transition hover:border-primary/40 hover:bg-primary/5 active:scale-[0.99]"
-                >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Phone className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                      Call us
-                    </p>
-                    <p className="break-words text-xs font-bold">{contactNumber}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <a href={contactHref} className="mt-2 flex items-center gap-2 text-sm font-medium text-orange-700">
+                  <Phone className="h-4 w-4" aria-hidden />
+                  {contactNumber}
                 </a>
               )}
-
               {shopAddress && directionsHref && (
                 <a
                   href={directionsHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/70 px-3 py-2.5 transition hover:border-primary/40 hover:bg-primary/5 active:scale-[0.99]"
+                  className="mt-2 flex items-start gap-2 text-sm text-stone-700"
                 >
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <MapPin className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                      Visit us
-                    </p>
-                    <p className="break-words text-xs font-semibold leading-snug">{shopAddress}</p>
-                  </div>
-                  <Navigation className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+                  <span>{shopAddress}</span>
                 </a>
               )}
-
               {!contactHref && !directionsHref && (
-                <p className="flex items-start gap-2 rounded-2xl border border-border/60 bg-background/70 px-3 py-2.5 text-[11px] leading-snug text-muted-foreground">
-                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Use the phone number printed on your job slip to reach the shop.
+                <p className="mt-2 text-sm text-stone-600">
+                  Use the phone number printed on your job slip.
                 </p>
               )}
-            </div>
-          </section>
+            </section>
+          </article>
         )}
 
-        {/* Refresh footer */}
-        <div className="mt-4 flex flex-col items-center gap-1 text-center text-[10px] font-medium text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5" aria-live="polite">
-            <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} />
+        <p className="mt-6 flex items-center justify-center gap-2 text-center text-xs text-stone-500" aria-live="polite">
+          {ticket && (
+            <svg viewBox="0 0 20 20" className="h-4 w-4 -rotate-90" aria-hidden>
+              <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-100" />
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                className="text-orange-500 transition-[stroke-dashoffset] duration-1000 ease-linear"
+                strokeDasharray={ring}
+                strokeDashoffset={refreshing ? 0 : ringOffset}
+              />
+            </svg>
+          )}
+          <span>
             {ticket
               ? refreshing
                 ? "Checking for updates…"
                 : state === "notfound"
-                  ? `Auto-retry in ${secondsLeft}s`
-                  : `Auto-updates in ${secondsLeft}s`
-              : "Enter a ticket to start tracking"}
+                  ? `Will try again in ${secondsLeft}s`
+                  : `Updates in ${secondsLeft}s`
+              : "Enter a ticket to see the status"}
+            {lastUpdated
+              ? ` · last checked ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+              : ""}
           </span>
-          {lastUpdated && (
-            <span>
-              Last checked{" "}
-              {lastUpdated.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          )}
-        </div>
-
-        <p className="mt-4 pb-1 text-center text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-          Powered by FixMo PH
         </p>
       </main>
 
-      {/* Mobile action bar */}
-      {state === "ready" && job && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/90 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_30px_rgba(0,0,0,0.14)] backdrop-blur-xl">
-          <div className="mx-auto flex w-full max-w-lg items-center gap-2.5">
-            {contactHref ? (
-              <>
-                <a
-                  href={contactHref}
-                  className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-600 to-amber-500 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <Phone className="h-4 w-4" />
-                  Call shop
-                </a>
-                <button
-                  type="button"
-                  onClick={refresh}
-                  aria-label="Refresh repair status"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <RefreshCw className={cn("h-5 w-5", refreshing && "animate-spin")} />
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={refresh}
-                className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-600 to-amber-500 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <RefreshCw className={cn("h-5 w-5", refreshing && "animate-spin")} />
-                {refreshing ? "Refreshing…" : "Refresh status"}
-              </button>
-            )}
-          </div>
+      {state === "ready" && job && contactHref && (
+        <div className="fixed inset-x-0 bottom-0 border-t border-orange-100 bg-white/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
+          <a
+            href={contactHref}
+            className="mx-auto flex h-12 w-full max-w-md items-center justify-center gap-2 rounded-xl bg-orange-600 text-sm font-semibold text-white shadow-lg shadow-orange-600/25 transition hover:bg-orange-700 active:scale-[0.98]"
+          >
+            <Phone className="h-4 w-4" aria-hidden />
+            Call the shop
+          </a>
         </div>
       )}
     </div>
